@@ -1,0 +1,9 @@
+{
+  "name": "Jam's English Desk",
+  "short_name": "Jam English",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F6F7FB",
+  "theme_color": "#F26A24",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

@@ -1,0 +1,104 @@
+import { CHARACTERS } from '../data/characters';
+import { LEVELS } from '../data/curriculum';
+import { Avatar } from '../components/Avatar';
+import { LEVEL_UP_DAYS, dayStr, levelProgress, streak } from '../lib/store';
+import { useApp } from '../state';
+
+export type Go = (r: 'morning' | 'night' | 'prep') => void;
+
+function greeting(h: number) {
+  if (h < 11) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+export function Home({ go }: { go: Go }) {
+  const { data } = useApp();
+  const prof = data.profile;
+  const today = dayStr();
+  const didMorning = data.sessions.some((s) => s.date === today && s.kind === 'morning');
+  const didNight = data.sessions.some((s) => s.date === today && s.kind === 'night');
+  const s = streak(data.sessions);
+  const level = LEVELS[prof.level - 1];
+  const prog = levelProgress(data.sessions, prof.level);
+  const hour = new Date().getHours();
+  const nightFirst = hour >= 17 && didMorning;
+  // Level 3+ ships later: don't leave Jam staring at "3/3" with nothing happening.
+  const maxed = prog >= LEVEL_UP_DAYS && !LEVELS[prof.level]?.available;
+
+  const morning = (
+    <button key="m" className={`task-card morning ${didMorning ? 'done' : ''}`} onClick={() => go('morning')}>
+      <div className="tc-icon">☀️</div>
+      <div className="tc-body">
+        <div className="tc-title">Morning Talk</div>
+        <div className="tc-sub">{prof.morningTime} · พูด 20 นาที</div>
+      </div>
+      <div className="tc-go">{didMorning ? '✓ เสร็จแล้ว' : 'เริ่ม ›'}</div>
+    </button>
+  );
+  const night = (
+    <button key="n" className={`task-card night ${didNight ? 'done' : ''}`} onClick={() => go('night')}>
+      <div className="tc-icon">🌙</div>
+      <div className="tc-body">
+        <div className="tc-title">Night Review</div>
+        <div className="tc-sub">{prof.nightTime} · ฟัง 10 นาที ไม่ต้องพูด</div>
+      </div>
+      <div className="tc-go">{didNight ? '✓ เสร็จแล้ว' : 'เริ่ม ›'}</div>
+    </button>
+  );
+
+  return (
+    <div className="screen home">
+      <div className="hero">
+        <Avatar character={CHARACTERS.jimmy} style={prof.style} size={120} />
+        <div className="bubble">
+          <b>{greeting(hour)}, Jam!</b>
+          <div>
+            {didMorning && didNight
+              ? 'วันนี้ครบทั้ง 2 รอบแล้ว เก่งมาก!'
+              : didMorning
+                ? 'เช้านี้ทำได้ดีมาก คืนนี้มาทบทวนกันนะ'
+                : `${prof.coachName} รออยู่ มาฝึกพูดกัน`}
+          </div>
+        </div>
+      </div>
+
+      <div className="stats">
+        <div className="stat">
+          <b>🔥 {s}</b>
+          <span>วันต่อเนื่อง</span>
+        </div>
+        <div className="stat">
+          <b>ระดับ {prof.level}</b>
+          <span>{level.nameEn}</span>
+        </div>
+        <div className="stat">
+          {maxed ? (
+            <>
+              <b>✓</b>
+              <span>ระดับ {prof.level + 1} มาเร็วๆ นี้</span>
+            </>
+          ) : (
+            <>
+              <b>{prog}/{LEVEL_UP_DAYS}</b>
+              <span>วันสู่ระดับถัดไป</span>
+            </>
+          )}
+        </div>
+      </div>
+
+      <h3 className="section">วันนี้</h3>
+      {nightFirst ? [night, morning] : [morning, night]}
+
+      <button className="task-card prep" onClick={() => go('prep')}>
+        <div className="tc-icon">🎯</div>
+        <div className="tc-body">
+          <div className="tc-title">ซ้อมก่อนเจอจริง</div>
+          <div className="tc-sub">เล่าเป็นภาษาไทยว่าจะเจออะไร แล้วซ้อมกับตัวละคร</div>
+        </div>
+        <div className="tc-go">›</div>
+      </button>
+      <p className="privacy-note">⚠️ AI ฟรีอาจนำบทสนทนาไปใช้พัฒนา อย่าพูดหรือพิมพ์ข้อมูลจริงหรือข้อมูลลับของลูกค้าและบริษัท</p>
+    </div>
+  );
+}
