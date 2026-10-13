@@ -222,6 +222,10 @@ memory: one English sentence summarizing what she practiced and what to work on 
         },
         required: ['stars', 'good', 'better', 'words', 'noteTh', 'noteEn', 'memory'],
       },
+      undefined,
+      // Side-by-side test (2026-10-14): Gemini free 12–24 s and ~20/day, Groq 1–3 s and ~1,000/day,
+      // star quality about the same — Groq first, Gemini as backup.
+      { groqFirst: true },
     );
   },
 
@@ -251,7 +255,7 @@ tasks: 2-4 short English checklist items for Jam to accomplish.`,
         required: ['titleTh', 'titleEn', 'situationTh', 'goalEn', 'character', 'partnerRole', 'opening', 'tasks', 'keyPhrases'],
       },
       audio,
-      { lang: 'th' }, // rare and quality matters: Gemini first, Groq as backup
+      { groqFirst: true, lang: 'th' }, // side-by-side test: same quality, Groq ~10x faster
     )) as Record<string, any>;
     // Groq's schema mode is best-effort: an unknown partner id would crash the Prep screen.
     if (!['sarah', 'tanaka', 'ben'].includes(r.character)) r.character = 'sarah';
