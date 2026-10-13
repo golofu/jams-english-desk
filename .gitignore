@@ -6,3 +6,5 @@ dist
 .netlify
 .vercel
 *.tsbuildinfo
+
+.vercel

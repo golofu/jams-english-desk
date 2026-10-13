@@ -7,12 +7,10 @@ import { Shadowing } from '../components/Shadowing';
 import { Avatar } from '../components/Avatar';
 import { jimmyChatPrompt, rolePlayPrompt } from '../lib/prompts';
 import { unlockSpeech } from '../lib/audio';
-import { dayStr, uid } from '../lib/store';
+import { byDue, dayStr, localDayIndex, passedStars, uid } from '../lib/store';
 import { useApp } from '../state';
 
 type Step = 'start' | 'warmup' | 'chat' | 'roleplay' | 'review' | 'done';
-
-const dayNumber = () => Math.floor(Date.now() / 86_400_000);
 
 /** Morning Talk: warm-up → chat with Jimmy → role-play → review (≈20 min). */
 export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId?: string }) {
@@ -24,23 +22,36 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
 
   const plan = useMemo(() => {
     const pool = SCENARIOS.filter((s) => s.level === prof.level);
-    const done = data.sessions.filter((s) => s.kind === 'morning' && s.level === prof.level && s.stars).length;
-    const scenario = SCENARIOS.find((s) => s.id === scenarioId) ?? pool[done % pool.length];
-    // Mixed cast: the same scene may bring a different partner each time.
-    const charId = scenario.characters[(dayNumber() + done) % scenario.characters.length];
-    const topic = JIMMY_TOPICS[dayNumber() % JIMMY_TOPICS.length];
-    const due = data.phrases.filter((p) => p.due <= dayStr()).slice(0, 3);
-    const warm = due.length >= 3 ? due : [...due, ...scenario.keyPhrases].slice(0, 3);
+    // Visits = role-plays actually held (stars or not), so a failed AI review never
+    // freezes the rotation on the same scene.
+    const visits = (id: string) => data.sessions.filter((s) => s.kind === 'morning' && s.scenarioId === id).length;
+    const passedIds = new Set(data.sessions.filter((s) => s.kind === 'morning' && passedStars(s.stars)).map((s) => s.scenarioId));
+    // Next scene: not yet passed first, then least practised, in curriculum order.
+    const scenario =
+      SCENARIOS.find((s) => s.id === scenarioId) ??
+      [...pool].sort((a, b) => Number(passedIds.has(a.id)) - Number(passedIds.has(b.id)) || visits(a.id) - visits(b.id))[0];
+    // Mixed cast: rotate partners per visit of this scene (a day-based index froze on weekdays).
+    const charId = scenario.characters[visits(scenario.id) % scenario.characters.length];
+    const today = localDayIndex();
+    const isMonday = new Date(`${dayStr()}T12:00:00`).getDay() === 1;
+    const topics = JIMMY_TOPICS.filter((t) => !t.monday || isMonday);
+    const topic = topics[today % topics.length];
+    // Warm-up primes today's role-play (2 key phrases) + the phrase that has waited longest.
+    const due = data.phrases.filter((p) => p.due <= dayStr()).sort(byDue)[0];
+    const warm = due ? [...scenario.keyPhrases.slice(0, 2), due] : scenario.keyPhrases.slice(0, 3);
     return { scenario, character: CHARACTERS[charId], topic, warm };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prof.level, scenarioId]);
 
   const jimmy = CHARACTERS.jimmy;
   const level = LEVELS[prof.level - 1];
+  const [chatLogged, setChatLogged] = useState(false);
 
-  function logBusyDay() {
+  /** Warm-up + coach chat is real practice: it counts for the streak even if the role-play fails. */
+  function logChat() {
+    if (chatLogged) return;
+    setChatLogged(true);
     update('sessions', (s) => [{ id: uid(), date: dayStr(), kind: 'morning', level: prof.level, minutes: 8, createdAt: Date.now() }, ...s]);
-    setStep('done');
   }
 
   if (step === 'start')
@@ -94,7 +105,10 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
         system={jimmyChatPrompt({ coachName: prof.coachName, speed: prof.speed, topic: plan.topic.en, memory: prof.memory, level: prof.level })}
         seconds={300}
         onCancel={onExit}
-        onDone={() => (busy ? logBusyDay() : setStep('roleplay'))}
+        onDone={() => {
+          logChat();
+          setStep(busy ? 'done' : 'roleplay');
+        }}
       />
     );
 
@@ -110,7 +124,8 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
         tasks={plan.scenario.tasks}
         system={rolePlayPrompt({ scenario: plan.scenario, character: plan.character.id, speed: prof.speed })}
         seconds={480}
-        onCancel={onExit}
+        // The chat already counted; end on the done screen rather than dumping her at home.
+        onCancel={() => (chatLogged ? setStep('done') : onExit())}
         onDone={(r) => {
           setCall(r);
           setStep('review');

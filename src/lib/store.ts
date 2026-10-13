@@ -222,12 +222,25 @@ export function streak(sessions: SessionLog[]): number {
   return n;
 }
 
-export const LEVEL_UP_DAYS = 3;
-const passed = (s?: Stars) => !!s && s.task >= 2 && s.listening >= 2 && s.fluency >= 2;
+/** Local calendar-day index (Thailand is UTC+7: a UTC index would flip at 07:00). */
+export const localDayIndex = (d = dayStr()) => Math.round(new Date(`${d}T12:00:00Z`).getTime() / 86_400_000);
 
-/** Distinct days at this level where a role-play got ≥2 stars in every area. */
-export function levelProgress(sessions: SessionLog[], level: number): number {
-  return new Set(sessions.filter((s) => s.kind === 'morning' && s.level === level && passed(s.stars)).map((s) => s.date)).size;
+export const LEVEL_UP_DAYS = 3;
+export const LEVEL_UP_COVERAGE = 0.7; // share of the level's scenarios that must be passed
+export const passedStars = (s?: Stars) => !!s && s.task >= 2 && s.listening >= 2 && s.fluency >= 2;
+
+export type LevelStatus = { days: number; scenarios: number; needScenarios: number; ready: boolean };
+
+/**
+ * Level-up needs both: passes (≥2★ in every area) on 3 different days, AND passes in
+ * ~70% of the level's scenarios — so Jam can't skip half the level in three mornings.
+ */
+export function levelStatus(sessions: SessionLog[], level: number, totalScenarios: number): LevelStatus {
+  const passes = sessions.filter((s) => s.kind === 'morning' && s.level === level && passedStars(s.stars));
+  const days = new Set(passes.map((s) => s.date)).size;
+  const scenarios = new Set(passes.map((s) => s.scenarioId)).size;
+  const needScenarios = Math.ceil(totalScenarios * LEVEL_UP_COVERAGE);
+  return { days, scenarios, needScenarios, ready: days >= LEVEL_UP_DAYS && scenarios >= needScenarios };
 }
 
 export function uid(): string {
@@ -241,13 +254,19 @@ export function reviewPhrase(p: SavedPhrase, knew: boolean): SavedPhrase {
   return { ...p, box, due: addDays(dayStr(), knew ? BOX_DAYS[box] : 0) };
 }
 
+/** "Nice to meet you." and "nice to meet you" are the same phrase. */
+export const phraseKey = (en: string) => en.trim().toLowerCase().replace(/[.!?,;:]+$/g, '').replace(/\s+/g, ' ');
+
+/** Oldest-due first, so phrases that have waited longest come back before new ones. */
+export const byDue = (a: SavedPhrase, b: SavedPhrase) => a.due.localeCompare(b.due) || a.addedAt - b.addedAt;
+
 export function addPhrases(existing: SavedPhrase[], items: { en: string; th: string }[], source: string): SavedPhrase[] {
-  const seen = new Set(existing.map((p) => p.en.trim().toLowerCase()));
+  const seen = new Set(existing.map((p) => phraseKey(p.en)));
   const fresh = items
     // AI output: skip anything malformed, and duplicates within the same batch.
     .filter((i) => {
       if (!i || typeof i.en !== 'string' || typeof i.th !== 'string' || !i.en.trim()) return false;
-      const k = i.en.trim().toLowerCase();
+      const k = phraseKey(i.en);
       if (seen.has(k)) return false;
       seen.add(k);
       return true;

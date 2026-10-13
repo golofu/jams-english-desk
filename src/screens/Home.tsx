@@ -1,7 +1,7 @@
 import { CHARACTERS } from '../data/characters';
-import { LEVELS } from '../data/curriculum';
+import { LEVELS, SCENARIOS } from '../data/curriculum';
 import { Avatar } from '../components/Avatar';
-import { LEVEL_UP_DAYS, dayStr, levelProgress, streak } from '../lib/store';
+import { dayStr, levelStatus, streak } from '../lib/store';
 import { useApp } from '../state';
 
 export type Go = (r: 'morning' | 'night' | 'prep') => void;
@@ -20,11 +20,11 @@ export function Home({ go }: { go: Go }) {
   const didNight = data.sessions.some((s) => s.date === today && s.kind === 'night');
   const s = streak(data.sessions);
   const level = LEVELS[prof.level - 1];
-  const prog = levelProgress(data.sessions, prof.level);
+  const st = levelStatus(data.sessions, prof.level, SCENARIOS.filter((x) => x.level === prof.level).length);
   const hour = new Date().getHours();
   const nightFirst = hour >= 17 && didMorning;
   // Level 3+ ships later: don't leave Jam staring at "3/3" with nothing happening.
-  const maxed = prog >= LEVEL_UP_DAYS && !LEVELS[prof.level]?.available;
+  const maxed = st.ready && !LEVELS[prof.level]?.available;
 
   const morning = (
     <button key="m" className={`task-card morning ${didMorning ? 'done' : ''}`} onClick={() => go('morning')}>
@@ -80,8 +80,8 @@ export function Home({ go }: { go: Go }) {
             </>
           ) : (
             <>
-              <b>{prog}/{LEVEL_UP_DAYS}</b>
-              <span>วันสู่ระดับถัดไป</span>
+              <b>{Math.min(st.scenarios, st.needScenarios)}/{st.needScenarios}</b>
+              <span>บทที่ผ่านในระดับนี้</span>
             </>
           )}
         </div>

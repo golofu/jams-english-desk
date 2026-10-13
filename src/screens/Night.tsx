@@ -3,7 +3,7 @@ import { CHARACTERS } from '../data/characters';
 import { SCENARIOS } from '../data/curriculum';
 import { Avatar } from '../components/Avatar';
 import { SPEECH_RATE, speak, stopSpeaking } from '../lib/audio';
-import { dayStr, reviewPhrase, uid, type SavedPhrase } from '../lib/store';
+import { byDue, dayStr, phraseKey, reviewPhrase, uid, type SavedPhrase } from '../lib/store';
 import { useApp } from '../state';
 
 type Item = { id?: string; en: string; th: string };
@@ -40,16 +40,21 @@ export function Night({ onExit }: { onExit: () => void }) {
   const { items, quiz } = useMemo(() => {
     const today = dayStr();
     const fresh = data.phrases.filter((p) => dayStr(new Date(p.addedAt)) === today);
-    const due = data.phrases.filter((p) => p.due <= today && !fresh.includes(p));
-    // Half today's new phrases, half due reviews, so old ones aren't starved on busy days.
-    const picked = [...fresh.slice(0, 4), ...due.slice(0, 4), ...fresh.slice(4), ...due.slice(4)];
+    // Waiting reviews first (oldest due first), then today's new phrases — new ones are
+    // added every morning, so putting them first starved older phrases forever.
+    const due = data.phrases.filter((p) => p.due <= today && !fresh.includes(p)).sort(byDue);
+    const picked = [...due.slice(0, 3), ...fresh.slice(0, 3), ...due.slice(3), ...fresh.slice(3)];
     const fallback = SCENARIOS.filter((s) => s.level <= prof.level).flatMap((s) => s.keyPhrases);
-    let items: Item[] = uniqBy(picked, (p) => p.en).slice(0, QUIZ_N);
-    if (items.length < 4) items = uniqBy([...items, ...shuffle(fallback)], (p) => p.en).slice(0, QUIZ_N);
-    // Every listened item is quizzed (so its review is recorded); options are distinct Thai texts.
+    let items: Item[] = uniqBy(picked, (p) => phraseKey(p.en)).slice(0, QUIZ_N);
+    if (items.length < 4) items = uniqBy([...items, ...shuffle(fallback)], (p) => phraseKey(p.en)).slice(0, QUIZ_N);
+    // Every listened item is quizzed (so its review is recorded); options are distinct Thai texts
+    // of the same kind (word vs sentence), so length alone doesn't give the answer away.
     const pool = uniqBy([...data.phrases, ...fallback], (p) => p.th);
+    const isWord = (en: string) => en.trim().split(/\s+/).length <= 3;
     const quiz = shuffle(items).map((it) => {
-      const wrong = shuffle(pool.filter((p) => p.th.trim() !== it.th.trim())).slice(0, 3).map((p) => p.th);
+      const others = shuffle(pool.filter((p) => p.th.trim() !== it.th.trim()));
+      const same = others.filter((p) => isWord(p.en) === isWord(it.en));
+      const wrong = [...same, ...others.filter((p) => !same.includes(p))].slice(0, 3).map((p) => p.th);
       return { it, options: shuffle([it.th, ...wrong]) };
     });
     return { items, quiz };

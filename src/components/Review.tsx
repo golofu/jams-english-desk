@@ -4,7 +4,8 @@ import { LEVELS, type Scenario } from '../data/curriculum';
 import { Avatar } from './Avatar';
 import { apiErrorTh, coach } from '../lib/api';
 import { speak } from '../lib/audio';
-import { LEVEL_UP_DAYS, addPhrases, dayStr, levelProgress, uid, type SessionLog, type Stars } from '../lib/store';
+import { addPhrases, dayStr, levelStatus, passedStars, uid, type SessionLog, type Stars } from '../lib/store';
+import { SCENARIOS } from '../data/curriculum';
 import { useApp } from '../state';
 import type { CallResult } from './CallView';
 
@@ -61,6 +62,8 @@ export function Review({ scenario, call, kind, character, onNext, nextLabel }: {
         scenario,
         transcript: call.lines.map((l) => ({ who: l.who, text: l.text })),
         helpCount: call.helpCount,
+        jamTurns,
+        coachName: get().profile.coachName,
       });
       const stars = { task: clamp(r.stars?.task), listening: clamp(r.stars?.listening), fluency: clamp(r.stars?.fluency) };
       // Too short to judge fairly → never count it toward level-up.
@@ -76,11 +79,14 @@ export function Review({ scenario, call, kind, character, onNext, nextLabel }: {
 
       update('sessions', (s) => s.map((x) => (x.id === logId.current ? { ...x, stars } : x)));
       update('phrases', (ps) =>
-        addPhrases(ps, [...result.better.map((b) => ({ en: b.better, th: b.th })), ...result.words], scenario.titleTh),
+        // A few per session: Night reviews ~6 a day, more would bury older phrases forever.
+        addPhrases(ps, [...result.better.slice(0, 2).map((b) => ({ en: b.better, th: b.th })), ...result.words.slice(0, 3)], scenario.titleTh),
       );
       const level = get().profile.level;
       const nextLvl = LEVELS.find((l) => l.n === level + 1);
-      const reached = kind === 'morning' && levelProgress(get().sessions, level) >= LEVEL_UP_DAYS && !!nextLvl?.available;
+      const total = SCENARIOS.filter((s) => s.level === level).length;
+      // Level up only on a passing session, once days + scenario coverage are both met.
+      const reached = kind === 'morning' && passedStars(stars) && levelStatus(get().sessions, level, total).ready && !!nextLvl?.available;
       update('profile', (p) => ({ ...p, memory: result.memory || p.memory, level: reached ? level + 1 : p.level }));
       if (reached && nextLvl) setLevelUp(nextLvl.n);
     } catch (e) {

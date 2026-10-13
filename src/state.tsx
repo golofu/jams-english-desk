@@ -61,7 +61,7 @@ export function AppProvider({ session, children }: { session: Session | null; ch
   }, []);
 
   const signOut = useCallback(async () => {
-    await supabase?.auth.signOut();
+    await supabase?.auth.signOut({ scope: 'local' }); // this device only, not Jam's other devices
   }, []);
 
   if (!data) return <div className="splash">กำลังโหลด…</div>;

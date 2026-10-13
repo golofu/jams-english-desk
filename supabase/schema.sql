@@ -1,5 +1,7 @@
 -- Jam's English Desk — run in Supabase SQL editor (free plan is enough). Safe to re-run.
--- Also: Authentication → Providers → Google ON; and set Netlify ALLOWED_EMAIL to Jam's email.
+-- Also: Authentication → Providers → Google ON; set ALLOWED_EMAIL (Vercel/Netlify) to Jam's email;
+-- and after Jam's first sign-in: Authentication → Settings → turn OFF "Allow new users to sign up"
+-- (RLS lets any signed-in user store their own rows/files, so strangers must not be able to sign up).
 
 -- One JSON document per key per user: profile, sessions, phrases, snapshots.
 create table if not exists public.app_state (
@@ -15,8 +17,9 @@ create policy "own rows" on public.app_state
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- Voice Snapshot recordings (private bucket, folder = user id).
-insert into storage.buckets (id, name, public) values ('snapshots', 'snapshots', false)
-  on conflict (id) do nothing;
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values ('snapshots', 'snapshots', false, 20971520, array['audio/webm', 'audio/mp4', 'audio/ogg'])
+  on conflict (id) do update set file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
 drop policy if exists "own snapshots read" on storage.objects;
 create policy "own snapshots read" on storage.objects for select
   using (bucket_id = 'snapshots' and (storage.foldername(name))[1] = auth.uid()::text);

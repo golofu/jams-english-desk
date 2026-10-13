@@ -20,7 +20,7 @@
    | ชื่อ | ค่า |
    |---|---|
    | `GEMINI_API_KEY` | key ฟรีจาก AI Studio (เบราว์เซอร์มองไม่เห็น) |
-   | `APP_PASSCODE` | รหัสเข้าแอปที่ตั้งเอง แจมใส่ครั้งเดียวต่อเครื่อง (ใช้จนกว่าจะตั้ง Supabase) |
+   | `APP_PASSCODE` | รหัสเข้าแอป **ยาวอย่างน้อย 16 ตัว แบบสุ่ม** (เช่นสร้างจากตัวจัดการรหัสผ่าน) แจมใส่ครั้งเดียวต่อเครื่อง ใช้จนกว่าจะตั้ง Supabase |
 2. Deployments → Redeploy เพื่อให้ค่าใหม่มีผล
 3. ถ้าต้องการล็อกอิน Google + ซิงก์ทุกเครื่อง ทำขั้นตอน Supabase ด้านล่าง แล้วใส่ตัวแปรชุดเดียวกับ Netlify ใน Vercel
 
@@ -31,7 +31,10 @@
 1. **Supabase** (ไว้ล็อกอินด้วย Google และซิงก์ข้อมูลทุกเครื่อง)
    - สร้างโปรเจกต์ฟรีที่ https://supabase.com → SQL Editor → วางไฟล์ [supabase/schema.sql](supabase/schema.sql) แล้วกด Run
    - Authentication → Providers → เปิด **Google** (ต้องสร้าง OAuth Client ใน Google Cloud Console ตามที่ Supabase แนะนำ)
-   - Authentication → URL Configuration → ใส่ลิงก์ Netlify ใน Site URL และ Redirect URLs
+   - Authentication → URL Configuration → ใส่ลิงก์เว็บจริง (เช่น `https://jams-english-desk.vercel.app`) ใน Site URL และ Redirect URLs
+   - หลังแจมล็อกอินครั้งแรกแล้ว: Authentication → Settings → **ปิด Allow new users to sign up** กันคนแปลกหน้าสมัคร
+   - ⚠️ บน iPhone ให้ทดสอบล็อกอินจากไอคอนบนหน้าจอโฮมด้วย (แอปจากหน้าจอโฮมเก็บข้อมูลแยกจาก Safari)
+   - ตั้งค่า `VITE_SUPABASE_*` และ `SUPABASE_*` **พร้อมกันทั้ง 4 ตัว** แล้ว Redeploy ไม่งั้นแอปจะขึ้นว่าตั้งค่าไม่ตรงกัน
 2. **Netlify**: New site → Import จากโฟลเดอร์หรือ Git (`netlify.toml` ตั้งค่า build ไว้แล้ว) → Site settings → Environment variables:
    | ชื่อ | ค่า |
    |---|---|

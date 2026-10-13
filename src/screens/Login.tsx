@@ -5,7 +5,12 @@ import { supabase } from '../lib/supabase';
 import { BRAND } from '../brand';
 
 export function Login() {
-  const [err, setErr] = useState('');
+  // Google/Supabase report failures (e.g. access_denied) in the redirect URL — show them.
+  const [err, setErr] = useState(() => {
+    const q = new URLSearchParams(location.hash.slice(1) || location.search);
+    const e = q.get('error_description') || q.get('error');
+    return e ? `เข้าสู่ระบบไม่สำเร็จ: ${e.replace(/\+/g, ' ')}` : '';
+  });
   async function login() {
     const { error } = await supabase!.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
     if (error) setErr('เข้าสู่ระบบไม่สำเร็จ ลองใหม่อีกครั้ง');

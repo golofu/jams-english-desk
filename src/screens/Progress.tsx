@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { LEVELS } from '../data/curriculum';
+import { LEVELS, SCENARIOS } from '../data/curriculum';
 import { SnapshotRecorder } from '../components/SnapshotRecorder';
 import { getClip } from '../lib/idb';
 import { supabase } from '../lib/supabase';
-import { LEVEL_UP_DAYS, dayStr, levelProgress, streak, type SnapshotMeta } from '../lib/store';
+import { LEVEL_UP_DAYS, dayStr, levelStatus, streak, type SnapshotMeta } from '../lib/store';
 import { useApp } from '../state';
 
 export function Progress() {
@@ -48,15 +48,23 @@ export function Progress() {
         {LEVELS.map((l) => {
           const done = l.n < prof.level;
           const cur = l.n === prof.level;
-          const prog = cur ? levelProgress(data.sessions, l.n) : 0;
+          const st = levelStatus(data.sessions, l.n, SCENARIOS.filter((x) => x.level === l.n).length);
+          const days = Math.min(st.days, LEVEL_UP_DAYS);
+          const scen = Math.min(st.scenarios, st.needScenarios);
+          // Average of both requirements, capped (the old bar ran past 100%).
+          const pct = Math.round(((days / LEVEL_UP_DAYS + scen / st.needScenarios) / 2) * 100);
           return (
             <div key={l.n} className={`level-row ${cur ? 'cur' : ''} ${!l.available ? 'locked' : ''}`}>
               <span className="badge">{done ? '✓' : l.available ? l.n : '🔒'}</span>
               <div>
                 <b>{l.nameEn}</b> · {l.nameTh}
                 <div className="small">{l.available ? l.goalTh : 'เร็วๆ นี้'}</div>
-                {cur && <div className="bar"><i style={{ width: `${(prog / LEVEL_UP_DAYS) * 100}%` }} /></div>}
-                {cur && <div className="small">ได้ ≥2 ดาวทุกด้าน {prog}/{LEVEL_UP_DAYS} วัน</div>}
+                {cur && <div className="bar"><i style={{ width: `${pct}%` }} /></div>}
+                {cur && (
+                  <div className="small">
+                    ผ่าน (≥2 ดาวทุกด้าน) {scen}/{st.needScenarios} บท · {days}/{LEVEL_UP_DAYS} วัน
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -85,7 +93,7 @@ export function Progress() {
         {data.sessions.filter((x) => x.kind !== 'snapshot').slice(0, 12).map((x) => (
           <div key={x.id} className="hist-row">
             <span>{x.date.slice(5)}</span>
-            <span className="t">{x.kind === 'night' ? '🌙 Night Review' : x.kind === 'prep' ? `🎯 ${x.scenarioTitle}` : `☀️ ${x.scenarioTitle ?? 'Morning (วันยุ่ง)'}`}</span>
+            <span className="t">{x.kind === 'night' ? '🌙 Night Review' : x.kind === 'prep' ? `🎯 ${x.scenarioTitle}` : `☀️ ${x.scenarioTitle ?? 'คุยกับโค้ช'}`}</span>
             <span className="stars">{x.stars ? '★'.repeat(Math.min(x.stars.task, x.stars.listening, x.stars.fluency)) : ''}</span>
           </div>
         ))}

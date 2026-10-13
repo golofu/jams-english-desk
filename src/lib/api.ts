@@ -1,4 +1,4 @@
-import { accessToken } from './supabase';
+import { accessToken, supabase } from './supabase';
 
 export class ApiError extends Error {
   constructor(public code: string, public status: number) {
@@ -18,6 +18,8 @@ export function apiErrorTh(e: unknown): string {
       return 'ตอนนี้ AI ฟรีมีคนใช้เยอะ รอสักครู่แล้วลองใหม่นะคะ';
     case 'QUOTA':
       return 'AI ฟรีวันนี้ครบโควตาแล้ว (รีเซ็ตประมาณบ่าย 2–3 โมง) ระหว่างนี้ฝึก Night Review ได้นะคะ';
+    case 'CONFIG_MISMATCH':
+      return 'ตั้งค่าเซิร์ฟเวอร์กับแอปไม่ตรงกัน (ต้องใส่ VITE_SUPABASE_* แล้ว Redeploy) แจ้งผู้ดูแลแอปนะคะ';
     case 'PASSCODE_REQUIRED':
       return 'ต้องใส่รหัสเข้าแอปก่อนใช้ AI (ขอจากผู้ดูแลแอป)';
     case 'LOGIN_REQUIRED':
@@ -69,8 +71,12 @@ export async function api<T>(fn: 'coach' | 'live-token', body: object, retried =
   });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && data.error === 'PASSCODE_REQUIRED' && !retried) {
+    // Another call already got a new passcode while this one was in flight: just retry.
+    if (readPass() && readPass() !== pass) return api<T>(fn, body, true);
     if (await askPass(!!pass)) return api<T>(fn, body, true);
   }
+  // Server expects Supabase login but this build has no login screen (VITE_ vars missing / not redeployed).
+  if (res.status === 401 && data.error === 'LOGIN_REQUIRED' && !token && !supabase) throw new ApiError('CONFIG_MISMATCH', 401);
   if (!res.ok) throw new ApiError(data.error || 'SERVER', res.status);
   return data as T;
 }

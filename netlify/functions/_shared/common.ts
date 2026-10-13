@@ -46,6 +46,8 @@ export async function requireUser(req: Request): Promise<void> {
     const passcode = process.env.APP_PASSCODE;
     if (passcode) {
       if (req.headers.get('x-app-passcode') === passcode) return;
+      // Slow down guessing; with a long random passcode this makes brute force pointless.
+      if (req.headers.get('x-app-passcode')) await new Promise((r) => setTimeout(r, 1500));
       throw new HttpError(401, 'PASSCODE_REQUIRED');
     }
     throw new HttpError(503, 'AUTH_NOT_CONFIGURED');

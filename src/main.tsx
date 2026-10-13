@@ -15,8 +15,10 @@ root.setProperty('--deep', BRAND.colors.deep);
 
 // An open tab that outlived a deploy asks for chunks that no longer exist: reload once.
 window.addEventListener('vite:preloadError', () => {
-  if (!sessionStorage.getItem('jed:reloaded')) {
-    sessionStorage.setItem('jed:reloaded', '1');
+  // At most once a minute, so a genuinely missing file can't cause a reload loop.
+  const last = Number(sessionStorage.getItem('jed:reloaded') || 0);
+  if (Date.now() - last > 60_000) {
+    sessionStorage.setItem('jed:reloaded', String(Date.now()));
     location.reload();
   }
 });

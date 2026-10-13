@@ -42,7 +42,7 @@ export const SCENARIOS: Scenario[] = [
     opening: "Hi there! I'm here to see your CEO. I'm a bit early, I think.",
     tasks: ['Greet the guest', 'Say her name and job', 'Ask one friendly question'],
     keyPhrases: [
-      { en: 'Good morning. Welcome to GoDigit.', th: 'สวัสดีตอนเช้าค่ะ ยินดีต้อนรับสู่ GoDigit' },
+      { en: 'Good morning. Welcome to GoDigit.', th: 'สวัสดีค่ะ ยินดีต้อนรับสู่ GoDigit ค่ะ' },
       { en: "My name is Jam. I'm the CEO's assistant.", th: 'ดิฉันชื่อแจม เป็นผู้ช่วย CEO ค่ะ' },
       { en: 'Nice to meet you.', th: 'ยินดีที่ได้รู้จักค่ะ' },
       { en: 'How was your trip here?', th: 'เดินทางมาเป็นอย่างไรบ้างคะ' },
@@ -51,11 +51,11 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     id: 'l1-weekend', level: 1,
-    titleTh: 'คุยเรื่องวันหยุด', titleEn: 'How was your weekend?',
-    situationTh: 'เช้าวันจันทร์ คุยเล่นเรื่องวันหยุดสุดสัปดาห์',
-    goalEn: 'Talk about what she did at the weekend in 2-3 simple sentences and ask back.',
+    titleTh: 'คุยเรื่องวันหยุด', titleEn: 'How was your day off?',
+    situationTh: 'คุยเล่นเรื่องวันหยุดที่ผ่านมา',
+    goalEn: 'Talk about what she did on her last day off in 2-3 simple sentences and ask back.',
     partnerRole: 'a friendly colleague-like visitor making small talk',
-    opening: 'Morning, Jam! How was your weekend?',
+    opening: 'Morning, Jam! How was your last day off?',
     tasks: ['Say what she did', 'Give one detail (where / with who)', 'Ask the partner back'],
     keyPhrases: [
       { en: 'It was great, thank you.', th: 'ดีมากค่ะ ขอบคุณค่ะ' },
@@ -63,7 +63,7 @@ export const SCENARIOS: Scenario[] = [
       { en: 'I went to the market with my family.', th: 'ไปตลาดกับครอบครัวค่ะ' },
       { en: 'How about you?', th: 'แล้วคุณล่ะคะ' },
     ],
-    characters: ['sarah', 'ben'],
+    characters: ['sarah', 'tanaka'],
   },
   {
     id: 'l1-waiting', level: 1,
@@ -95,7 +95,7 @@ export const SCENARIOS: Scenario[] = [
       { en: 'Hot or iced?', th: 'ร้อนหรือเย็นคะ' },
       { en: "Sure, I'll bring it right away.", th: 'ได้ค่ะ เดี๋ยวนำมาให้เลยค่ะ' },
     ],
-    characters: ['tanaka', 'sarah', 'ben'],
+    characters: ['tanaka', 'sarah'],
   },
   {
     id: 'l1-hometown', level: 1,
@@ -127,7 +127,7 @@ export const SCENARIOS: Scenario[] = [
       { en: 'Do you like spicy food?', th: 'ทานเผ็ดได้ไหมคะ' },
       { en: 'I recommend the green curry.', th: 'แนะนำแกงเขียวหวานค่ะ' },
     ],
-    characters: ['sarah', 'ben', 'tanaka'],
+    characters: ['sarah', 'tanaka'],
   },
 
   // ---------- Level 2: Front Desk ----------
@@ -140,7 +140,7 @@ export const SCENARIOS: Scenario[] = [
     opening: '(phone rings) ... Hello?',
     tasks: ['Answer with company + her name', "Ask the caller's name", 'Ask the reason for the call', 'Ask them to hold'],
     keyPhrases: [
-      { en: "Good afternoon, GoDigit, CEO's office. Jam speaking.", th: 'สวัสดีค่ะ GoDigit ห้อง CEO แจมพูดค่ะ' },
+      { en: "Good afternoon, GoDigit, CEO's office. Jam speaking.", th: 'สวัสดีค่ะ GoDigit ห้อง CEO แจมรับสายค่ะ' },
       { en: "May I ask who's calling, please?", th: 'ขอทราบชื่อผู้โทรได้ไหมคะ' },
       { en: 'May I ask what it is about?', th: 'ขอทราบเรื่องที่ติดต่อได้ไหมคะ' },
       { en: 'One moment, please. Please hold.', th: 'สักครู่นะคะ กรุณาถือสายรอค่ะ' },
@@ -162,7 +162,7 @@ export const SCENARIOS: Scenario[] = [
       { en: 'Let me read that back to you.', th: 'ขอทวนข้อความนะคะ' },
       { en: "I'll make sure he gets your message.", th: 'จะแจ้งท่านให้แน่นอนค่ะ' },
     ],
-    characters: ['tanaka', 'sarah', 'ben'],
+    characters: ['tanaka', 'sarah'],
   },
   {
     id: 'l2-welcome', level: 2,
@@ -226,7 +226,7 @@ export const SCENARIOS: Scenario[] = [
       { en: 'The booking reference is A-B-7-2-K.', th: 'รหัสการจองคือ A-B-7-2-K ค่ะ' },
       { en: "I'd like to change the flight to tomorrow.", th: 'ต้องการเลื่อนเที่ยวบินเป็นพรุ่งนี้ค่ะ' },
       { en: 'Is there a change fee?', th: 'มีค่าธรรมเนียมเปลี่ยนไหมคะ' },
-      { en: 'The morning flight is better, please.', th: 'ขอเป็นเที่ยวบินตอนเช้าค่ะ' },
+      { en: "I'd prefer the morning flight, please.", th: 'ขอเป็นเที่ยวบินตอนเช้าค่ะ' },
     ],
     characters: ['ben'],
   },
@@ -261,19 +261,19 @@ export const SCENARIOS: Scenario[] = [
       { en: 'Take the elevator to the twelfth floor.', th: 'ขึ้นลิฟต์ไปชั้น 12 ค่ะ' },
       { en: 'Let me show you the way.', th: 'เดี๋ยวพาไปค่ะ' },
     ],
-    characters: ['sarah', 'tanaka', 'ben'],
+    characters: ['sarah', 'tanaka'],
   },
 ];
 
-export const JIMMY_TOPICS: { en: string; th: string }[] = [
-  { en: 'How did you sleep, and what did you have for breakfast?', th: 'นอนหลับดีไหม เช้านี้กินอะไร' },
+export const JIMMY_TOPICS: { en: string; th: string; monday?: boolean }[] = [
+  { en: 'How did you sleep? What will you have for breakfast today?', th: 'นอนหลับดีไหม เช้านี้จะกินอะไร' },
   { en: 'What is one thing you want to finish at work today?', th: 'วันนี้อยากทำงานอะไรให้เสร็จสักอย่าง' },
   { en: 'What did you do yesterday evening?', th: 'เมื่อวานตอนเย็นทำอะไร' },
   { en: 'Tell me about your favourite Thai food.', th: 'เล่าเรื่องอาหารไทยที่ชอบ' },
   { en: 'What do you like most about your job?', th: 'ชอบอะไรที่สุดในงานเลขา' },
   { en: 'Where would you like to travel next?', th: 'อยากไปเที่ยวที่ไหนต่อ' },
   { en: 'How do you get to work every day?', th: 'เดินทางไปทำงานยังไง' },
-  { en: 'What did you do last weekend?', th: 'สุดสัปดาห์ที่แล้วทำอะไร' },
+  { en: 'What did you do last weekend?', th: 'สุดสัปดาห์ที่แล้วทำอะไร', monday: true },
   { en: 'What is the busiest part of your day?', th: 'ช่วงไหนของวันที่ยุ่งที่สุด' },
   { en: 'Tell me about someone in your family.', th: 'เล่าเรื่องคนในครอบครัวสักคน' },
 ];

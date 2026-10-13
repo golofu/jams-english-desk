@@ -20,8 +20,8 @@ const PRIVACY = `Never ask for or repeat real names of real clients, phone numbe
 // Free-tier models sometimes answer 503 "high demand" or 429, and preview models get
 // retired (404); each model has its own quota, so step down the list instead of failing.
 const FALLBACKS = ['gemini-3.5-flash-lite', 'gemini-3.8-flash'];
-// Netlify cuts synchronous functions off at ~10 s; stop trying fallbacks before that.
-const BUDGET_MS = 9_000;
+// Netlify cuts synchronous functions off at ~10 s; Vercel allows 30 s (vercel.json maxDuration).
+const BUDGET_MS = process.env.VERCEL ? 25_000 : 9_000;
 
 function retryable(e: unknown): boolean {
   const st = statusOf(e);
@@ -42,7 +42,9 @@ async function generate(prompt: string, schema: object, audio?: Audio, model = T
     const remaining = deadline - Date.now();
     if (remaining < 1_500) break;
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), remaining);
+    // Don't let one slow model eat the whole budget: leave room for a fallback attempt.
+    const isLast = m === models[models.length - 1];
+    const timer = setTimeout(() => ctl.abort(), isLast ? remaining : Math.max(4_000, remaining * 0.6));
     try {
       const res = await ai.models.generateContent({
         model: m,
@@ -119,22 +121,22 @@ Give ONE short English sentence (max 14 words) she can say right now, its Thai m
     const scenario = { title: cap(sc.titleEn, 200), goal: cap(sc.goalEn, 500), tasks: (Array.isArray(sc.tasks) ? sc.tasks : []).slice(0, 6).map((t: unknown) => cap(t, 200)) };
     return generate(
       `${LEARNER}
-You are Jimmy, Jam's warm 50-year-old coach. Review this role-play kindly. Be encouraging: beginners quit when they feel judged.
+You are ${cap(b.coachName, 40) || 'Jimmy'}, Jam's warm 50-year-old coach. Review this role-play kindly in your WORDS (beginners quit when they feel judged), but score HONESTLY — the stars decide when she moves up a level.
 Scenario: ${JSON.stringify(scenario)}
-She pressed the "I'm stuck" (Thai help) button ${Number(b.helpCount) || 0} times.
+She spoke ${Number(b.jamTurns) || 0} times and pressed the "I'm stuck" (Thai help) button ${Number(b.helpCount) || 0} times.
 Transcript (speech-to-text, may contain recognition errors — be lenient about spelling):
 ${transcript || '(empty)'}
 
-Give 1-3 stars for each:
-- task: did she complete the scenario tasks?
-- listening: did she understand and answer what was asked?
-- fluency: could she keep talking (few help presses, not one-word answers)?
-If the transcript is nearly empty give 1 star each and an encouraging note.
+Give 1-3 stars for each, using these anchors:
+- task: 3 = all tasks clearly done; 2 = at least half the tasks done; 1 = fewer.
+- listening: 3 = answered every question on topic; 2 = mostly on topic, needed a repeat or two; 1 = often off topic or no answer.
+- fluency: 3 = full sentences, ≤1 help press; 2 = short sentences or 2-3 help presses; 1 = mostly single words or 4+ help presses.
+If she spoke fewer than 2 times, give 1 star each, and make noteTh/noteEn gently encourage her to answer more next time (do not praise the result).
 good: up to 3 things she said well (quote her words, Thai praise).
 better: up to 3 of her sentences rewritten more naturally (said = her words, better = improved, th = Thai meaning, why = short Thai reason).
 words: 5 useful words/phrases from this scenario with Thai meaning.
-noteTh: 1-2 warm sentences from Jimmy in Thai. noteEn: one short simple English sentence from Jimmy.
-memory: one English sentence summarizing what she practiced and what to work on next (Jimmy will read this tomorrow).`,
+noteTh: 1-2 warm sentences from you (the coach) in Thai. noteEn: one short simple English sentence from you.
+memory: one English sentence summarizing what she practiced and what to work on next (you will read this tomorrow).`,
       {
         type: 'object',
         properties: {
