@@ -19,7 +19,12 @@ const PRIVACY = `Never ask for or repeat real names of real clients, phone numbe
 
 // Free-tier models sometimes answer 503 "high demand" or 429, and preview models get
 // retired (404); each model has its own quota, so step down the list instead of failing.
-const FALLBACKS = ['gemini-3.5-flash-lite', 'gemini-3.8-flash'];
+// Free tier is ~20 requests/day per model, so more models = more daily headroom.
+const FALLBACKS = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash'];
+// Models differ on the lowest thinking level they accept (3.8-flash rejects MINIMAL with 400).
+// Start at MINIMAL and remember per instance which models need LOW.
+const needsLow = new Set<string>(['gemini-3.8-flash']);
+const thinkingRejected = (e: unknown) => statusOf(e) === 400 && /thinking level/i.test((e as Error)?.message ?? '');
 // Netlify cuts synchronous functions off at ~10 s; Vercel allows 30 s (vercel.json maxDuration).
 const BUDGET_MS = process.env.VERCEL ? 25_000 : 9_000;
 
@@ -38,12 +43,13 @@ async function generate(prompt: string, schema: object, audio?: Audio, model = T
   const deadline = Date.now() + BUDGET_MS;
   let last: unknown;
   let sawQuota = false;
-  for (const m of models) {
+  for (let i = 0; i < models.length; i++) {
+    const m = models[i];
     const remaining = deadline - Date.now();
     if (remaining < 1_500) break;
     const ctl = new AbortController();
     // Don't let one slow model eat the whole budget: leave room for a fallback attempt.
-    const isLast = m === models[models.length - 1];
+    const isLast = i === models.length - 1;
     const timer = setTimeout(() => ctl.abort(), isLast ? remaining : Math.max(4_000, remaining * 0.6));
     try {
       const res = await ai.models.generateContent({
@@ -56,7 +62,7 @@ async function generate(prompt: string, schema: object, audio?: Audio, model = T
           maxOutputTokens: 2048,
           // Short structured answers don't need long reasoning, and it keeps us inside the time budget.
           // (thinkingLevel, not thinkingBudget: 0 — flash-lite rejects a zero budget with 400.)
-          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+          thinkingConfig: { thinkingLevel: needsLow.has(m) ? ThinkingLevel.LOW : ThinkingLevel.MINIMAL },
           abortSignal: ctl.signal,
         },
       });
@@ -65,6 +71,11 @@ async function generate(prompt: string, schema: object, audio?: Audio, model = T
       return JSON.parse(text);
     } catch (e) {
       last = e;
+      if (thinkingRejected(e) && !needsLow.has(m)) {
+        needsLow.add(m);
+        i--; // same model again with LOW
+        continue;
+      }
       if (statusOf(e) === 429) sawQuota = true;
       if (!retryable(e)) throw e;
       console.warn(`[coach] ${m} failed (${statusOf(e) ?? (e as Error).message}), trying next model`);
@@ -73,8 +84,9 @@ async function generate(prompt: string, schema: object, audio?: Audio, model = T
     }
   }
   if (sawQuota) throw new HttpError(429, 'QUOTA');
-  if (last === undefined || statusOf(last) === undefined) throw new HttpError(503, 'BUSY');
-  throw last;
+  // Every error that got here was retryable (busy, timeout, rejected config): report "busy", not a crash.
+  void last;
+  throw new HttpError(503, 'BUSY');
 }
 
 // ---------- input limits: this endpoint must not become a free general-purpose LLM ----------
