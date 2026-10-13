@@ -1,5 +1,6 @@
 import { ThinkingLevel } from '@google/genai';
 import { LITE_MODEL, TEXT_MODEL, HttpError, gemini, handle, json, requireUser, statusOf } from './_shared/common.js';
+import { GROQ_MODELS, groqJson, hasGroq, transcribe } from './_shared/groq.js';
 
 /**
  * Text-model helpers. One endpoint, `action` picks the job:
@@ -41,18 +42,31 @@ function retryable(e: unknown): boolean {
 
 const isDailyQuota = (e: unknown) => /PerDay/i.test((e as Error)?.message ?? '');
 
-async function generate(prompt: string, schema: object, audio?: Audio, model: string | string[] = TEXT_MODEL) {
-  const ai = gemini();
-  const parts: { text?: string; inlineData?: Audio }[] = [{ text: `${prompt}\n(Jam's name in Thai is "แจม".)` }];
-  if (audio) parts.push({ inlineData: audio });
-  const models = Array.isArray(model) ? model : [model, ...FALLBACKS.filter((m) => m !== model)];
+type Plan = {
+  /** Gemini model, or an exact list (subtitles use their own short list). */
+  gemini?: string | string[];
+  /** Try Groq before Gemini: frequent / latency-sensitive jobs, where Gemini's ~20/day runs out. */
+  groqFirst?: boolean;
+  /** Language of Jam's attached speech, for Whisper when Groq handles it. */
+  lang?: 'th' | 'en';
+};
+type Candidate = { provider: 'gemini' | 'groq'; model: string };
+
+async function generate(prompt: string, schema: object, audio?: Audio, plan: Plan = {}) {
+  const fullPrompt = `${prompt}\n(Jam's name in Thai is "แจม".)`;
+  const g = plan.gemini ?? TEXT_MODEL;
+  const geminiList: Candidate[] = (Array.isArray(g) ? g : [g, ...FALLBACKS.filter((m) => m !== g)]).map((model) => ({ provider: 'gemini', model }));
+  const groqList: Candidate[] = hasGroq() ? GROQ_MODELS.map((model) => ({ provider: 'groq', model })) : [];
+  const models = plan.groqFirst ? [...groqList, ...geminiList] : [...geminiList, ...groqList];
   const deadline = Date.now() + BUDGET_MS;
-  let last: unknown;
   let sawQuota = false;
   let sawRate = false;
   let bad400 = 0;
+  let groqOff = false; // bad key, or Whisper unavailable for this request
+  let transcript: string | undefined;
   for (let i = 0; i < models.length; i++) {
-    const m = models[i];
+    const { provider, model: m } = models[i];
+    if (provider === 'groq' && groqOff) continue;
     const remaining = deadline - Date.now();
     if (remaining < 1_500) break;
     const ctl = new AbortController();
@@ -60,7 +74,18 @@ async function generate(prompt: string, schema: object, audio?: Audio, model: st
     const isLast = i === models.length - 1;
     const timer = setTimeout(() => ctl.abort(), isLast ? remaining : Math.max(4_000, remaining * 0.6));
     try {
-      const res = await ai.models.generateContent({
+      if (provider === 'groq') {
+        let p = fullPrompt;
+        if (audio) {
+          // Groq's text models can't hear: Whisper writes down what Jam said first (once per request).
+          transcript ??= await transcribe(audio.data, plan.lang ?? 'en', ctl.signal);
+          p += `\n[The attached audio, as ${plan.lang === 'th' ? 'Thai' : 'English'} speech-to-text (may contain recognition errors): "${transcript}"]`;
+        }
+        return await groqJson(m, p, schema, ctl.signal);
+      }
+      const parts: { text?: string; inlineData?: Audio }[] = [{ text: fullPrompt }];
+      if (audio) parts.push({ inlineData: audio });
+      const res = await gemini().models.generateContent({
         model: m,
         contents: [{ role: 'user', parts }],
         config: {
@@ -78,26 +103,32 @@ async function generate(prompt: string, schema: object, audio?: Audio, model: st
       if (!text) throw new SyntaxError('EMPTY');
       return JSON.parse(text);
     } catch (e) {
-      last = e;
-      if (thinkingRejected(e) && !needsLow.has(m)) {
+      if (provider === 'gemini' && thinkingRejected(e) && !needsLow.has(m)) {
         needsLow.add(m);
         i--; // same model again with LOW
         continue;
       }
       const st = statusOf(e);
       if (st === 429) (isDailyQuota(e) ? (sawQuota = true) : (sawRate = true));
-      if (st === 401 || st === 403) throw new HttpError(503, 'GEMINI_KEY_INVALID');
-      if (st === 400 && ++bad400 >= 2) throw new HttpError(400, 'BAD_INPUT');
-      if (!retryable(e)) throw e;
-      console.warn(`[coach] ${m} failed (${statusOf(e) ?? (e as Error).message}), trying next model`);
+      if (provider === 'groq') {
+        // A broken Groq setup must never block Gemini: just skip to the next provider.
+        if (st === 401 || st === 403 || (audio && transcript === undefined)) groqOff = true;
+      } else {
+        if (st === 401 || st === 403) {
+          if (groqList.length && !groqOff) continue; // Groq can still answer
+          throw new HttpError(503, 'GEMINI_KEY_INVALID');
+        }
+        if (st === 400 && ++bad400 >= 2) throw new HttpError(400, 'BAD_INPUT');
+        if (!retryable(e)) throw e;
+      }
+      console.warn(`[coach] ${provider}:${m} failed (${st ?? (e as Error).message}), trying next model`);
     } finally {
       clearTimeout(timer);
     }
   }
-  if (sawRate) throw new HttpError(429, 'RATE'); // per-minute limit: a short wait is enough
+  if (sawRate && !sawQuota) throw new HttpError(429, 'RATE'); // per-minute limit: a short wait is enough
   if (sawQuota) throw new HttpError(429, 'QUOTA');
   // Every error that got here was retryable (busy, timeout, rejected config): report "busy", not a crash.
-  void last;
   throw new HttpError(503, 'BUSY');
 }
 
@@ -125,6 +156,7 @@ Give ONE short English sentence (max 14 words) she can say right now, its Thai m
         required: ['en', 'th', 'sayIt', 'heard'],
       },
       audio,
+      { groqFirst: true, lang: 'th' }, // mid-conversation: speed matters, and it's used often
     );
   },
 
@@ -135,7 +167,7 @@ Give ONE short English sentence (max 14 words) she can say right now, its Thai m
       `Translate each English line into natural, easy Thai for a beginner learner. Keep the same order and count.\n${JSON.stringify(items)}`,
       { type: 'object', properties: { th: { type: 'array', items: str } }, required: ['th'] },
       undefined,
-      SUBTITLE_MODELS,
+      { gemini: SUBTITLE_MODELS, groqFirst: true }, // the most frequent call by far
     );
   },
 
@@ -210,6 +242,7 @@ tasks: 2-4 short English checklist items for Jam to accomplish.`,
         required: ['titleTh', 'titleEn', 'situationTh', 'goalEn', 'character', 'partnerRole', 'opening', 'tasks', 'keyPhrases'],
       },
       audio,
+      { lang: 'th' }, // rare and quality matters: Gemini first, Groq as backup
     );
   },
 
@@ -230,6 +263,7 @@ ${audio ? "Jam's new turn is the attached audio. Transcribe it as heard, then re
 Reply in character with 1-2 short spoken sentences.`,
       { type: 'object', properties: { heard: str, reply: str }, required: ['heard', 'reply'] },
       audio,
+      { groqFirst: true, lang: 'en' }, // backup voice chat: one call per sentence
     );
   },
 };
