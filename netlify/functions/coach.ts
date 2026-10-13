@@ -51,13 +51,19 @@ type Plan = {
   lang?: 'th' | 'en';
 };
 type Candidate = { provider: 'gemini' | 'groq'; model: string };
+const exhaustedUntil = new Map<string, number>();
 
 async function generate(prompt: string, schema: object, audio?: Audio, plan: Plan = {}) {
   const fullPrompt = `${prompt}\n(Jam's name in Thai is "แจม".)`;
   const g = plan.gemini ?? TEXT_MODEL;
   const geminiList: Candidate[] = (Array.isArray(g) ? g : [g, ...FALLBACKS.filter((m) => m !== g)]).map((model) => ({ provider: 'gemini', model }));
   const groqList: Candidate[] = hasGroq() ? GROQ_MODELS.map((model) => ({ provider: 'groq', model })) : [];
-  const models = plan.groqFirst ? [...groqList, ...geminiList] : [...geminiList, ...groqList];
+  // Gemini-first jobs still reach Groq quickly: two Gemini tries, then Groq, then the rest.
+  // Models that said "daily quota used up" are skipped for an hour (per warm instance).
+  const live = (c: Candidate) => (exhaustedUntil.get(`${c.provider}:${c.model}`) ?? 0) < Date.now();
+  const gem = geminiList.filter(live);
+  const grq = groqList.filter(live);
+  const models = plan.groqFirst ? [...grq, ...gem] : [...gem.slice(0, 2), ...grq, ...gem.slice(2)];
   const deadline = Date.now() + BUDGET_MS;
   let sawQuota = false;
   let sawRate = false;
@@ -110,6 +116,7 @@ async function generate(prompt: string, schema: object, audio?: Audio, plan: Pla
       }
       const st = statusOf(e);
       if (st === 429) (isDailyQuota(e) ? (sawQuota = true) : (sawRate = true));
+      if (st === 429 && isDailyQuota(e)) exhaustedUntil.set(`${provider}:${m}`, Date.now() + 60 * 60_000);
       if (provider === 'groq') {
         // A broken Groq setup must never block Gemini: just skip to the next provider.
         if (st === 401 || st === 403 || (audio && transcript === undefined)) groqOff = true;
@@ -127,7 +134,7 @@ async function generate(prompt: string, schema: object, audio?: Audio, plan: Pla
     }
   }
   if (sawRate && !sawQuota) throw new HttpError(429, 'RATE'); // per-minute limit: a short wait is enough
-  if (sawQuota) throw new HttpError(429, 'QUOTA');
+  if (sawQuota || !models.length) throw new HttpError(429, 'QUOTA');
   // Every error that got here was retryable (busy, timeout, rejected config): report "busy", not a crash.
   throw new HttpError(503, 'BUSY');
 }
