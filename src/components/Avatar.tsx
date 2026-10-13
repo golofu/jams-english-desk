@@ -33,7 +33,15 @@ export function Avatar({ character, style, level, state = 'idle', size = 260, la
     let raf = 0;
     let nextBlink = performance.now() + 2000;
     let blinkStart = 0;
+    let last = 0;
+    // Battery: 3 state updates per frame on several avatars heats a phone over a 20-minute call.
+    // Lip-sync needs ~30 fps; an idle avatar (no audio level) is fine at ~15 fps.
+    const frameMs = level ? 33 : 66;
+    const still = matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const loop = (now: number) => {
+      raf = requestAnimationFrame(loop);
+      if (now - last < frameMs) return;
+      last = now;
       const target = level ? level() : 0;
       // Fast attack, slower release reads as natural speech.
       smooth.current += (target - smooth.current) * (target > smooth.current ? 0.6 : 0.25);
@@ -44,8 +52,7 @@ export function Avatar({ character, style, level, state = 'idle', size = 260, la
       }
       const b = now - blinkStart;
       setBlink(b < 160 ? Math.abs(1 - b / 80) : 1);
-      setT(now / 1000);
-      raf = requestAnimationFrame(loop);
+      if (!still) setT(now / 1000);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);

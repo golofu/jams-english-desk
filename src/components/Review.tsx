@@ -50,6 +50,8 @@ export function Review({ scenario, call, kind, character, onNext, nextLabel }: {
       character, minutes: Math.max(1, Math.round(call.seconds / 60)), createdAt: Date.now(),
     };
     update('sessions', (s) => [log, ...s]);
+    // Even if the AI review fails, Jimmy should know what she practised (a good review overwrites this).
+    update('profile', (p) => ({ ...p, memory: `She practiced the role-play "${scenario.titleEn}".`, memoryDate: startDay.current }));
     void evaluate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -88,7 +90,7 @@ export function Review({ scenario, call, kind, character, onNext, nextLabel }: {
       const total = SCENARIOS.filter((s) => s.level === level).length;
       // Level up only on a passing session, once days + scenario coverage are both met.
       const reached = kind === 'morning' && passedStars(stars) && levelStatus(get().sessions, level, total).ready && !!nextLvl?.available;
-      update('profile', (p) => ({ ...p, memory: result.memory || p.memory, level: reached ? level + 1 : p.level }));
+      update('profile', (p) => ({ ...p, memory: result.memory || p.memory, memoryDate: startDay.current, level: reached ? level + 1 : p.level }));
       if (reached && nextLvl) setLevelUp(nextLvl.n);
     } catch (e) {
       setError(apiErrorTh(e));

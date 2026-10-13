@@ -10,6 +10,13 @@ import { unlockSpeech } from '../lib/audio';
 import { byDue, dayStr, localDayIndex, passedStars, uid } from '../lib/store';
 import { useApp } from '../state';
 
+/** "… (3 days ago)" unless it really was the last practice day. */
+function memoryWithAge(memory: string, date?: string): string {
+  if (!memory || !date) return memory;
+  const days = Math.round((new Date(`${dayStr()}T12:00:00`).getTime() - new Date(`${date}T12:00:00`).getTime()) / 86_400_000);
+  return days <= 1 || Number.isNaN(days) ? memory : `${memory} (that was ${days} days ago)`;
+}
+
 type Step = 'start' | 'warmup' | 'chat' | 'roleplay' | 'review' | 'done';
 
 /** Morning Talk: warm-up → chat with Jimmy → role-play → review (≈20 min). */
@@ -105,7 +112,7 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
         kicker="ขั้นที่ 2 · คุยกับโค้ช"
         title={plan.topic.en}
         situationTh={`คุยเล่นกับ ${prof.coachName} เรื่อง "${plan.topic.th}" ตอบสั้นๆ ก็ได้ ไม่ต้องกลัวผิด`}
-        system={jimmyChatPrompt({ coachName: prof.coachName, speed: prof.speed, topic: plan.topic.en, memory: prof.memory, level: prof.level })}
+        system={jimmyChatPrompt({ coachName: prof.coachName, speed: prof.speed, topic: plan.topic.en, memory: memoryWithAge(prof.memory, prof.memoryDate), level: prof.level })}
         seconds={300}
         // Shy or offline in the chat: the warm-up still counts, and she can go on to the role-play.
         onCancel={() => {

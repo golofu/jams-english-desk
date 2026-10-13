@@ -22,7 +22,7 @@ export function Phrases() {
           <div className="meta">
             <span title="ระดับความจำ">{'●'.repeat(p.box + 1)}{'○'.repeat(4 - p.box)}</span>
             <span>{p.source}</span>
-            <button className="link" onClick={() => update('phrases', (ps) => ps.filter((x) => x.id !== p.id))}>ลบ</button>
+            <button className="link" onClick={() => update('phrases', (ps) => ps.map((x) => (x.id === p.id ? { ...x, deleted: true, touchedAt: Date.now() } : x)))}>ลบ</button>
           </div>
         </div>
       ))}

@@ -22,6 +22,12 @@ type Opts = {
 const KICKOFF = '(System: Jam has just joined the call. Do not reply to this note — start the conversation yourself now, exactly as your instructions describe.)';
 const CONNECT_TIMEOUT_MS = 10_000;
 const MAX_UTTER_CHUNKS = 150; // 15 s of 100 ms chunks — keeps fallback uploads small
+const BARGE_IN_RMS = 0.05; // speech close to the phone is ~0.05–0.3; leaked speaker echo is usually far below
+function rms(pcm: Int16Array): number {
+  let sum = 0;
+  for (let i = 0; i < pcm.length; i++) sum += (pcm[i] / 0x8000) ** 2;
+  return Math.sqrt(sum / pcm.length);
+}
 const FATAL = ['NO_GEMINI_KEY', 'LOGIN_REQUIRED', 'NOT_ALLOWED', 'AUTH_NOT_CONFIGURED', 'PASSCODE_REQUIRED'];
 
 /**
@@ -282,17 +288,20 @@ export class Conversation {
       return;
     }
     if (this.mode === 'live') {
+      // Speakerphone: some phones' echo cancellation misses WebAudio output, so Live would hear
+      // Jimmy and cut him off every few words. While he talks, only clearly-spoken input (Jam
+      // really cutting in) goes through; quieter sound is sent as silence to keep the stream steady.
+      let out = pcm;
+      if (this.player?.playing && rms(pcm) < BARGE_IN_RMS) out = new Int16Array(pcm.length);
       this.session?.sendRealtimeInput({
-        audio: { data: b64FromBytes(new Uint8Array(pcm.buffer)), mimeType: 'audio/pcm;rate=16000' },
+        audio: { data: b64FromBytes(new Uint8Array(out.buffer)), mimeType: 'audio/pcm;rate=16000' },
       });
       return;
     }
     if (this.state === 'connecting') return;
     // Turn mode: ignore mic while thinking/speaking (avoids hearing ourselves).
     if (this.busy) return;
-    let sum = 0;
-    for (let i = 0; i < pcm.length; i++) sum += (pcm[i] / 0x8000) ** 2;
-    const loud = Math.sqrt(sum / pcm.length) > 0.02;
+    const loud = rms(pcm) > 0.02;
     this.loudRun = loud ? this.loudRun + 1 : 0;
     if (!this.voiced) {
       // Keep ~0.3 s of pre-roll; speech starts after 3 consecutive loud chunks.

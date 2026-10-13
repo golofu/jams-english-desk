@@ -15,6 +15,8 @@ export type Profile = {
   onboarded: boolean;
   level: number;
   memory: string; // Jimmy's note from the last session
+  memoryDate?: string; // day the memory was written, so Jimmy doesn't call last week "yesterday"
+  updatedAt?: number; // newest edit wins for settings when two devices disagree
 };
 
 export type SessionLog = {
@@ -38,6 +40,8 @@ export type SavedPhrase = {
   addedAt: number;
   box: number; // Leitner box 0-4; higher = known better
   due: string; // YYYY-MM-DD
+  touchedAt?: number; // last review/edit; the newer copy wins in a merge
+  deleted?: boolean; // tombstone, so a delete on one device isn't undone by another
 };
 
 export type SnapshotMeta = { id: string; date: string; seconds: number; remotePath?: string };
@@ -100,54 +104,75 @@ function sane<K extends DataKey>(k: K, v: unknown): AppData[K] | undefined {
   return (typeof v === 'object' && !Array.isArray(v) ? { ...DEFAULT_DATA.profile, ...(v as object) } : undefined) as AppData[K] | undefined;
 }
 
-/** Append-only lists (sessions, snapshots) merge by id, so two devices never erase each other. */
-function unionById<T extends { id: string }>(a: T[], b: T[]): T[] {
-  const seen = new Map<string, T>();
-  for (const x of [...a, ...b]) if (!seen.has(x.id)) seen.set(x.id, x);
-  return [...seen.values()];
+function byId<T extends { id: string }>(a: T[], b: T[], pick: (x: T, y: T) => T): T[] {
+  const m = new Map<string, T>();
+  for (const x of a) m.set(x.id, x);
+  for (const y of b) {
+    const x = m.get(y.id);
+    m.set(y.id, x ? pick(x, y) : y);
+  }
+  return [...m.values()];
 }
+const touched = (p: SavedPhrase) => p.touchedAt ?? p.addedAt;
 
 /**
- * Loads every key. Local changes that never reached Supabase (offline, error) win
- * over the cloud copy and are re-sent; append-only lists are merged either way.
+ * Two devices' copies of one key → one copy that loses nothing: lists merge item by item
+ * (a review, a star or a delete on either side survives), the level never goes down, and
+ * the newest settings edit wins. Used on load, on focus, and before every cloud write.
  */
-export async function loadData(userId: string | null): Promise<AppData> {
+export function mergeKey<K extends DataKey>(k: K, a: AppData[K], b: AppData[K]): AppData[K] {
+  if (k === 'sessions') {
+    return byId(a as SessionLog[], b as SessionLog[], (x, y) => ({ ...x, ...y, stars: y.stars ?? x.stars }))
+      .sort((x, y) => y.createdAt - x.createdAt) as AppData[K];
+  }
+  if (k === 'snapshots') {
+    return byId(a as SnapshotMeta[], b as SnapshotMeta[], (x, y) => ({ ...x, ...y, remotePath: y.remotePath ?? x.remotePath })) as AppData[K];
+  }
+  if (k === 'phrases') {
+    return byId(a as SavedPhrase[], b as SavedPhrase[], (x, y) => (touched(y) >= touched(x) ? y : x))
+      .sort((x, y) => y.addedAt - x.addedAt) as AppData[K];
+  }
+  const x = a as Profile;
+  const y = b as Profile;
+  const newer = (y.updatedAt ?? 0) >= (x.updatedAt ?? 0) ? y : x;
+  return { ...newer, level: Math.max(x.level, y.level), onboarded: x.onboarded || y.onboarded } as AppData[K];
+}
+
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * Loads every key: local copy merged with the cloud copy, and anything the cloud is missing
+ * is pushed. `failed` = the cloud couldn't be reached (offline, paused free project).
+ */
+export async function loadData(userId: string | null): Promise<{ data: AppData; failed: boolean }> {
   const scope = userId ?? 'local';
   const data: AppData = structuredClone(DEFAULT_DATA);
   const rec = data as Record<DataKey, unknown>;
   const legacy = !userId; // pre-scoping builds stored 'jed:<key>'
+  const hadLocal = KEYS.some((k) => lsGet(LS(scope, k)) !== undefined);
   for (const k of KEYS) {
     const v = sane(k, lsGet(LS(scope, k)) ?? (legacy ? lsGet(LEGACY(k)) : undefined));
     if (v !== undefined) rec[k] = v;
   }
-  if (!supabase || !userId) return data;
+  if (!supabase || !userId) return { data, failed: false };
 
   const { data: rows, error } = await supabase.from('app_state').select('key,value').eq('user_id', userId);
-  if (error) return data; // offline: local copy is the best we have
+  if (error) return { data, failed: true }; // offline: local copy is the best we have
   const remote = new Map((rows ?? []).map((r) => [r.key as DataKey, r.value]));
-  const firstLogin = !remote.size && !KEYS.some((k) => lsGet(LS(scope, k)) !== undefined);
-  for (const k of KEYS) {
-    const r = sane(k, remote.get(k));
-    const dirty = !!lsGet(DIRTY(scope, k));
-    if (k === 'sessions' || k === 'snapshots') {
-      if (r) rec[k] = unionById(rec[k] as { id: string }[], r as { id: string }[]);
-    } else if (r && !dirty) rec[k] = r;
-    lsSet(LS(scope, k), rec[k]);
-    // Push when local is newer, the merge added items, or the account has no copy yet.
-    if (dirty || !r || JSON.stringify(r) !== JSON.stringify(rec[k])) queueSync(userId, k, rec[k]);
-  }
-  if (firstLogin) {
+  if (!remote.size && !hadLocal) {
     // First sign-in on this device with an empty account: bring Local-mode practice along.
     for (const k of KEYS) {
       const v = sane(k, lsGet(LS('local', k)) ?? lsGet(LEGACY(k)));
-      if (v !== undefined) {
-        rec[k] = v;
-        lsSet(LS(scope, k), v);
-        queueSync(userId, k, v);
-      }
+      if (v !== undefined) rec[k] = v;
     }
   }
-  return data;
+  for (const k of KEYS) {
+    const r = sane(k, remote.get(k));
+    if (r) rec[k] = mergeKey(k, rec[k] as never, r as never);
+    lsSet(LS(scope, k), rec[k]);
+    if (!r || !same(r, rec[k])) queueSync(userId, k, rec[k]);
+  }
+  return { data, failed: false };
 }
 
 // One request in flight per key, always sending the newest value (debounced), so
@@ -157,6 +182,9 @@ const inflight = new Set<string>();
 const timers = new Map<string, number>();
 let onSyncChange: (unsynced: number) => void = () => undefined;
 export const onSyncStatus = (fn: (unsynced: number) => void) => (onSyncChange = fn);
+// The cloud had changes this device didn't (another device wrote meanwhile): tell the app.
+let onMerged: (key: DataKey, value: unknown) => void = () => undefined;
+export const onRemoteMerge = (fn: (key: DataKey, value: unknown) => void) => (onMerged = fn);
 
 function queueSync(userId: string, key: DataKey, value: unknown) {
   const id = `${userId}:${key}`;
@@ -171,9 +199,24 @@ async function flush(id: string) {
   if (!job || !supabase || inflight.has(id)) return;
   inflight.add(id);
   pending.delete(id);
-  const { error } = await supabase
-    .from('app_state')
-    .upsert({ user_id: job.userId, key: job.key, value: job.value, updated_at: new Date().toISOString() });
+  // Read-merge-write: a stale tab must never replace what another device saved.
+  let value = job.value;
+  let error: unknown = null;
+  const cur = await supabase.from('app_state').select('value').eq('user_id', job.userId).eq('key', job.key).maybeSingle();
+  if (cur.error) error = cur.error;
+  else {
+    const r = sane(job.key, cur.data?.value);
+    if (r) value = mergeKey(job.key, value as never, r as never);
+    if (!r || !same(r, value)) {
+      ({ error } = await supabase
+        .from('app_state')
+        .upsert({ user_id: job.userId, key: job.key, value, updated_at: new Date().toISOString() }));
+    }
+    if (!error && !same(value, job.value)) {
+      lsSet(LS(job.userId, job.key), value);
+      onMerged(job.key, value);
+    }
+  }
   inflight.delete(id);
   if (error) {
     if (!pending.has(id)) pending.set(id, job); // keep for retry; dirty flag stays
@@ -251,7 +294,7 @@ export function uid(): string {
 const BOX_DAYS = [0, 1, 3, 7, 14];
 export function reviewPhrase(p: SavedPhrase, knew: boolean): SavedPhrase {
   const box = knew ? Math.min(4, p.box + 1) : 0;
-  return { ...p, box, due: addDays(dayStr(), knew ? BOX_DAYS[box] : 0) };
+  return { ...p, box, due: addDays(dayStr(), knew ? BOX_DAYS[box] : 0), touchedAt: Date.now() };
 }
 
 /** "Nice to meet you." and "nice to meet you" are the same phrase. */
@@ -268,7 +311,9 @@ export const phraseKey = (en: string) =>
 export const byDue = (a: SavedPhrase, b: SavedPhrase) => a.due.localeCompare(b.due) || a.addedAt - b.addedAt;
 
 export function addPhrases(existing: SavedPhrase[], items: { en: string; th: string }[], source: string): SavedPhrase[] {
-  const seen = new Set(existing.map((p) => phraseKey(p.en)));
+  const seen = new Set(existing.filter((p) => !p.deleted).map((p) => phraseKey(p.en)));
+  // Saving a phrase that was deleted earlier brings it back as new (and drops the tombstone).
+  const revived = new Set(items.filter((i) => i && typeof i.en === 'string').map((i) => phraseKey(i.en)));
   const fresh = items
     // AI output: skip anything malformed, and duplicates within the same batch.
     .filter((i) => {
@@ -278,6 +323,7 @@ export function addPhrases(existing: SavedPhrase[], items: { en: string; th: str
       seen.add(k);
       return true;
     })
-    .map((i) => ({ id: uid(), en: i.en.trim(), th: i.th, source, addedAt: Date.now(), box: 0, due: dayStr() }));
-  return [...fresh, ...existing];
+    .map((i) => ({ id: uid(), en: i.en.trim(), th: i.th, source, addedAt: Date.now(), touchedAt: Date.now(), box: 0, due: dayStr() }));
+  const keep = fresh.length ? existing.filter((p) => !(p.deleted && revived.has(phraseKey(p.en)) && fresh.some((f) => phraseKey(f.en) === phraseKey(p.en)))) : existing;
+  return [...fresh, ...keep];
 }
