@@ -3,7 +3,7 @@ import { CHARACTERS } from '../data/characters';
 import { SCENARIOS } from '../data/curriculum';
 import { Avatar } from '../components/Avatar';
 import { SPEECH_RATE, speak, stopSpeaking } from '../lib/audio';
-import { byDue, dayStr, phraseKey, reviewPhrase, uid, type SavedPhrase } from '../lib/store';
+import { addDays, byDue, dayStr, phraseKey, reviewPhrase, uid, type SavedPhrase } from '../lib/store';
 import { useApp } from '../state';
 
 type Item = { id?: string; en: string; th: string };
@@ -37,15 +37,20 @@ export function Night({ onExit }: { onExit: () => void }) {
   const [picked, setPicked] = useState<string | null>(null);
   const [score, setScore] = useState(0);
 
+  const [today] = useState(() => dayStr()); // 23:55 → 00:05 still counts for the night it began
   const { items, quiz } = useMemo(() => {
-    const today = dayStr();
     const fresh = data.phrases.filter((p) => dayStr(new Date(p.addedAt)) === today);
     // Waiting reviews first (oldest due first), then today's new phrases — new ones are
     // added every morning, so putting them first starved older phrases forever.
     const due = data.phrases.filter((p) => p.due <= today && !fresh.includes(p)).sort(byDue);
     const picked = [...due.slice(0, 3), ...fresh.slice(0, 3), ...due.slice(3), ...fresh.slice(3)];
+    // Top up with this morning's role-play phrases first (SPEC: replay what she practised today),
+    // then anything from her levels.
+    const todayIds = new Set(data.sessions.filter((x) => x.date === today && x.kind === 'morning' && x.scenarioId).map((x) => x.scenarioId));
+    const morning = SCENARIOS.filter((x) => todayIds.has(x.id)).flatMap((x) => x.keyPhrases);
     const fallback = SCENARIOS.filter((s) => s.level <= prof.level).flatMap((s) => s.keyPhrases);
     let items: Item[] = uniqBy(picked, (p) => phraseKey(p.en)).slice(0, QUIZ_N);
+    if (items.length < QUIZ_N) items = uniqBy([...items, ...morning], (p) => phraseKey(p.en)).slice(0, QUIZ_N);
     if (items.length < 4) items = uniqBy([...items, ...shuffle(fallback)], (p) => phraseKey(p.en)).slice(0, QUIZ_N);
     // Every listened item is quizzed (so its review is recorded); options are distinct Thai texts
     // of the same kind (word vs sentence), so length alone doesn't give the answer away.
@@ -81,7 +86,11 @@ export function Night({ onExit }: { onExit: () => void }) {
     const ok = opt === q.it.th;
     setPicked(opt);
     if (ok) setScore((s) => s + 1);
-    if (q.it.id) update('phrases', (ps) => ps.map((p: SavedPhrase) => (p.id === q.it.id ? reviewPhrase(p, ok) : p)));
+    // A phrase saved today was just shown with its answer: a right tap means "see you tomorrow",
+    // not a jump up the Leitner boxes.
+    const review = (p: SavedPhrase) =>
+      ok && dayStr(new Date(p.addedAt)) === today ? { ...p, due: addDays(today, 1) } : reviewPhrase(p, ok);
+    if (q.it.id) update('phrases', (ps) => ps.map((p: SavedPhrase) => (p.id === q.it.id ? review(p) : p)));
   }
 
   function nextQ() {
@@ -90,7 +99,7 @@ export function Night({ onExit }: { onExit: () => void }) {
       setI(i + 1);
       void speak(quiz[i + 1].it.en, { rate });
     } else {
-      update('sessions', (s) => [{ id: uid(), date: dayStr(), kind: 'night', level: prof.level, minutes: 10, createdAt: Date.now() }, ...s]);
+      update('sessions', (s) => [{ id: uid(), date: today, kind: 'night', level: prof.level, minutes: 10, createdAt: Date.now() }, ...s]);
       setStep('done');
     }
   }
@@ -116,6 +125,7 @@ export function Night({ onExit }: { onExit: () => void }) {
     const it = items[i];
     return (
       <div className="screen night-screen">
+        <button className="link back" onClick={() => { stopSpeaking(); onExit(); }}>‹ กลับ</button>
         <div className="step-count">ฟังทบทวน {i + 1} / {items.length}</div>
         <div className="shadow-card">
           <div className="en big">{it.en}</div>
@@ -149,6 +159,7 @@ export function Night({ onExit }: { onExit: () => void }) {
     const q = quiz[i];
     return (
       <div className="screen night-screen">
+        <button className="link back" onClick={() => { stopSpeaking(); onExit(); }}>‹ กลับ</button>
         <div className="step-count">ควิซ {i + 1} / {quiz.length}</div>
         <button className="listen-big" onClick={() => speak(q.it.en, { rate })}>🔊<span>แตะเพื่อฟังอีกครั้ง</span></button>
         {picked && <div className="reveal">{q.it.en}</div>}

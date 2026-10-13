@@ -9,7 +9,8 @@ export function Login() {
   const [err, setErr] = useState(() => {
     const q = new URLSearchParams(location.hash.slice(1) || location.search);
     const e = q.get('error_description') || q.get('error');
-    return e ? `เข้าสู่ระบบไม่สำเร็จ: ${e.replace(/\+/g, ' ')}` : '';
+    if (e) console.warn('login error', e); // details for the admin; Jam gets plain Thai
+    return !e ? '' : /access_denied/i.test(e) ? 'ยกเลิกการเข้าสู่ระบบแล้ว กดปุ่มด้านล่างเพื่อลองใหม่ค่ะ' : 'เข้าสู่ระบบไม่สำเร็จ ลองใหม่อีกครั้ง ถ้ายังไม่ได้ แจ้งผู้ดูแลแอปนะคะ';
   });
   async function login() {
     const { error } = await supabase!.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });

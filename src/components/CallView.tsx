@@ -55,6 +55,9 @@ export function CallView(p: Props) {
   const [typed, setTyped] = useState('');
   const conv = useRef<Conversation | null>(null);
   const started = useRef(0);
+  const connected = useRef(false);
+  const helpReq = useRef(0); // only the latest help request may show its card
+  const subsFailedAt = useRef(0);
   const wrapped = useRef(false);
   const finished = useRef(false);
   const noticeTimer = useRef(0);
@@ -83,7 +86,14 @@ export function CallView(p: Props) {
       speechRate: rate,
       onLine: (l) => setLines((ls) => (ls.some((x) => x.id === l.id) ? ls.map((x) => (x.id === l.id ? { ...l } : x)) : [...ls, { ...l }])),
       onPartial: setPartial,
-      onState: setState,
+      onState: (s) => {
+        // Mic permission + connecting time must not eat Jam's 5- or 8-minute timer.
+        if (s !== 'connecting' && !connected.current) {
+          connected.current = true;
+          started.current = Date.now();
+        }
+        setState(s);
+      },
       onNotice: showNotice,
     });
     conv.current = c;
@@ -92,8 +102,17 @@ export function CallView(p: Props) {
       await c.start();
     } catch (e) {
       c.end();
-      const mic = e instanceof DOMException && /NotAllowed|NotFound|Security/i.test(e.name);
-      setError(mic ? 'เปิดไมโครโฟนไม่ได้ กรุณาอนุญาตการใช้ไมค์ในเบราว์เซอร์' : apiErrorTh(e));
+      const name = (e as Error)?.name ?? '';
+      const msg = (e as Error)?.message ?? '';
+      setError(
+        /NotReadable|Abort/i.test(name)
+          ? 'ไมค์ถูกแอปอื่นใช้อยู่ (เช่น โทรศัพท์ LINE) ปิดแอปนั้นแล้วลองใหม่นะคะ'
+          : /NotAllowed|NotFound|Security|Overconstrained/i.test(name)
+            ? 'เปิดไมโครโฟนไม่ได้ กรุณาอนุญาตการใช้ไมค์ในเบราว์เซอร์'
+            : /WORKLET_LOAD/.test(msg)
+              ? 'เปิดระบบเสียงไม่ได้ ลองปิดแอปแล้วเปิดใหม่นะคะ'
+              : apiErrorTh(e),
+      );
     }
   }
 
@@ -144,11 +163,15 @@ export function CallView(p: Props) {
   useEffect(() => {
     if (prof.subtitles !== 'both') return;
     const todo = lines.filter((l) => l.who === 'ai' && !(l.id in th));
-    if (!todo.length) return;
+    if (!todo.length || Date.now() - subsFailedAt.current < 15_000) return;
     setTh((m) => ({ ...m, ...Object.fromEntries(todo.map((l) => [l.id, ''])) }));
     coach<{ th: string[] }>('translate', { lines: todo.map((l) => l.text) })
-      .then((r) => setTh((m) => ({ ...m, ...Object.fromEntries(todo.map((l, i) => [l.id, r.th[i] ?? ''])) })))
-      .catch(() => undefined);
+      .then((r) => setTh((m) => ({ ...m, ...Object.fromEntries(todo.map((l, i) => [l.id, r.th?.[i] ?? ''])) })))
+      .catch(() => {
+        // Forget these lines so they are retried (together) with the next new line.
+        subsFailedAt.current = Date.now();
+        setTh((m) => Object.fromEntries(Object.entries(m).filter(([id]) => !todo.some((l) => String(l.id) === id))));
+      });
   }, [lines, prof.subtitles, th]);
 
   useEffect(() => {
@@ -161,8 +184,10 @@ export function CallView(p: Props) {
     if (!holding) return;
     setHolding(false);
     setHelpBusy(true);
+    const req = ++helpReq.current;
     try {
       const r = await conv.current?.releaseHelp(context);
+      if (req !== helpReq.current) return; // a newer press replaced this one
       if (r) setHelp(r);
       else showNotice('กดค้างไว้แล้วพูดไทย แล้วค่อยปล่อยนะคะ');
     } catch (e) {
@@ -173,10 +198,13 @@ export function CallView(p: Props) {
   }
 
   async function sendTyped() {
-    if (!typed.trim()) return;
+    if (!typed.trim() || helpBusy) return;
     setHelpBusy(true);
+    const req = ++helpReq.current;
     try {
-      setHelp((await conv.current?.helpText(typed, context)) ?? null);
+      const r = await conv.current?.helpText(typed, context);
+      if (req !== helpReq.current) return;
+      setHelp(r ?? null);
       setTyped('');
       setTyping(false);
     } catch (e) {
@@ -336,6 +364,7 @@ export function CallView(p: Props) {
               e.currentTarget.setPointerCapture(e.pointerId);
               setHolding(true);
               setHelp(null);
+              helpReq.current++; // drop any answer still on its way
               conv.current?.holdHelp();
             }}
             onPointerUp={releaseHelp}

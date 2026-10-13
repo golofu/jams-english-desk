@@ -65,7 +65,8 @@ export function SnapshotRecorder({ onDone, onSkip }: { onDone: () => void; onSki
       let remotePath: string | undefined;
       if (supabase && userId) {
         const path = `${userId}/${id}.${blob.type.includes('mp4') ? 'm4a' : 'webm'}`;
-        const { error } = await supabase.storage.from('snapshots').upload(path, blob, { contentType: blob.type });
+        // The bucket allows "audio/webm", not Chrome's "audio/webm;codecs=opus".
+        const { error } = await supabase.storage.from('snapshots').upload(path, blob, { contentType: blob.type.split(';')[0] });
         if (!error) remotePath = path;
       }
       if (!local && !remotePath) throw new Error('NOWHERE');

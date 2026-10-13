@@ -39,14 +39,14 @@ export function Settings() {
           ชื่อโค้ช
           <input value={p.coachName} onChange={(e) => set({ coachName: e.target.value })} onBlur={() => !p.coachName.trim() && set({ coachName: 'Jimmy' })} />
         </label>
-        <label className="field">
+        <div className="field">
           ความเร็วในการพูด
           <Seg value={p.speed} onChange={(v) => { set({ speed: v }); void speak('This is how fast I will speak.', { rate: SPEECH_RATE[v] }); }} options={[['slow', 'ช้า'], ['normal', 'ปกติ'], ['fast', 'เร็ว']]} />
-        </label>
-        <label className="field">
+        </div>
+        <div className="field">
           ซับไตเติล
           <Seg value={p.subtitles} onChange={(v) => set({ subtitles: v })} options={[['both', 'อังกฤษ+ไทย'], ['en', 'อังกฤษ'], ['off', 'ปิด']]} />
-        </label>
+        </div>
       </div>
 
       <div className="card">

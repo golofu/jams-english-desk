@@ -20,7 +20,10 @@ const PRIVACY = `Never ask for or repeat real names of real clients, phone numbe
 // Free-tier models sometimes answer 503 "high demand" or 429, and preview models get
 // retired (404); each model has its own quota, so step down the list instead of failing.
 // Free tier is ~20 requests/day per model, so more models = more daily headroom.
-const FALLBACKS = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash'];
+// Order matters: subtitles (the most frequent call) get their own short list below so they
+// can't use up the buckets the end-of-call review needs.
+const FALLBACKS = ['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.7-flash'];
+const SUBTITLE_MODELS = [LITE_MODEL, 'gemini-3.7-flash'];
 // Models differ on the lowest thinking level they accept (3.8-flash rejects MINIMAL with 400).
 // Start at MINIMAL and remember per instance which models need LOW.
 const needsLow = new Set<string>(['gemini-3.8-flash']);
@@ -30,19 +33,24 @@ const BUDGET_MS = process.env.VERCEL ? 25_000 : 9_000;
 
 function retryable(e: unknown): boolean {
   const st = statusOf(e);
-  // 400 too: a config one model rejects shouldn't sink the request when another model accepts it.
+  // 400 too: a config one model rejects shouldn't sink the request when another model accepts it
+  // (but generate() stops after two 400s — then it's the request itself that is bad).
   if (st !== undefined) return [400, 404, 429, 500, 502, 503, 504].includes(st);
   return e instanceof SyntaxError || (e instanceof Error && /abort|timeout/i.test(e.message));
 }
 
-async function generate(prompt: string, schema: object, audio?: Audio, model = TEXT_MODEL) {
+const isDailyQuota = (e: unknown) => /PerDay/i.test((e as Error)?.message ?? '');
+
+async function generate(prompt: string, schema: object, audio?: Audio, model: string | string[] = TEXT_MODEL) {
   const ai = gemini();
   const parts: { text?: string; inlineData?: Audio }[] = [{ text: `${prompt}\n(Jam's name in Thai is "แจม".)` }];
   if (audio) parts.push({ inlineData: audio });
-  const models = [model, ...FALLBACKS.filter((m) => m !== model)];
+  const models = Array.isArray(model) ? model : [model, ...FALLBACKS.filter((m) => m !== model)];
   const deadline = Date.now() + BUDGET_MS;
   let last: unknown;
   let sawQuota = false;
+  let sawRate = false;
+  let bad400 = 0;
   for (let i = 0; i < models.length; i++) {
     const m = models[i];
     const remaining = deadline - Date.now();
@@ -59,7 +67,7 @@ async function generate(prompt: string, schema: object, audio?: Audio, model = T
           responseMimeType: 'application/json',
           responseJsonSchema: schema,
           temperature: 0.4,
-          maxOutputTokens: 2048,
+          maxOutputTokens: 8192, // the Thai review card is long, and thinking tokens count too
           // Short structured answers don't need long reasoning, and it keeps us inside the time budget.
           // (thinkingLevel, not thinkingBudget: 0 — flash-lite rejects a zero budget with 400.)
           thinkingConfig: { thinkingLevel: needsLow.has(m) ? ThinkingLevel.LOW : ThinkingLevel.MINIMAL },
@@ -76,13 +84,17 @@ async function generate(prompt: string, schema: object, audio?: Audio, model = T
         i--; // same model again with LOW
         continue;
       }
-      if (statusOf(e) === 429) sawQuota = true;
+      const st = statusOf(e);
+      if (st === 429) (isDailyQuota(e) ? (sawQuota = true) : (sawRate = true));
+      if (st === 401 || st === 403) throw new HttpError(503, 'GEMINI_KEY_INVALID');
+      if (st === 400 && ++bad400 >= 2) throw new HttpError(400, 'BAD_INPUT');
       if (!retryable(e)) throw e;
       console.warn(`[coach] ${m} failed (${statusOf(e) ?? (e as Error).message}), trying next model`);
     } finally {
       clearTimeout(timer);
     }
   }
+  if (sawRate) throw new HttpError(429, 'RATE'); // per-minute limit: a short wait is enough
   if (sawQuota) throw new HttpError(429, 'QUOTA');
   // Every error that got here was retryable (busy, timeout, rejected config): report "busy", not a crash.
   void last;
@@ -123,7 +135,7 @@ Give ONE short English sentence (max 14 words) she can say right now, its Thai m
       `Translate each English line into natural, easy Thai for a beginner learner. Keep the same order and count.\n${JSON.stringify(items)}`,
       { type: 'object', properties: { th: { type: 'array', items: str } }, required: ['th'] },
       undefined,
-      LITE_MODEL,
+      SUBTITLE_MODELS,
     );
   },
 

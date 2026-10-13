@@ -16,6 +16,12 @@ export function apiErrorTh(e: unknown): string {
       return 'แอปยังตั้งค่าการเข้าสู่ระบบไม่เสร็จ แจ้งผู้ดูแลแอปนะคะ';
     case 'BUSY':
       return 'ตอนนี้ AI ฟรีมีคนใช้เยอะ รอสักครู่แล้วลองใหม่นะคะ';
+    case 'RATE':
+      return 'ใช้ AI ถี่ไปนิด รอประมาณ 1 นาทีแล้วลองใหม่นะคะ';
+    case 'BAD_INPUT':
+      return 'AI ไม่เข้าใจข้อมูลรอบนี้ ลองพูดหรือพิมพ์ใหม่อีกครั้งนะคะ';
+    case 'GEMINI_KEY_INVALID':
+      return 'กุญแจ AI ของแอปใช้ไม่ได้แล้ว แจ้งผู้ดูแลแอปนะคะ';
     case 'QUOTA':
       return 'AI ฟรีวันนี้ครบโควตาแล้ว (รีเซ็ตประมาณบ่าย 2–3 โมง) ระหว่างนี้ฝึก Night Review ได้นะคะ';
     case 'CONFIG_MISMATCH':
@@ -34,9 +40,14 @@ export function apiErrorTh(e: unknown): string {
 // App passcode (used until Supabase login is set up). Asked once, remembered on this device.
 const PASS_KEY = 'jed:passcode';
 let asking: Promise<string | null> | null = null;
+// Header values must be plain Latin characters: a passcode typed on a Thai keyboard would make
+// fetch() throw before sending, and the bad value would stick forever.
+const validPass = (p: string) => /^[!-~]+$/.test(p);
 function readPass(): string {
   try {
-    return localStorage.getItem(PASS_KEY) || '';
+    const p = localStorage.getItem(PASS_KEY) || '';
+    if (p && !validPass(p)) localStorage.removeItem(PASS_KEY);
+    return validPass(p) ? p : '';
   } catch {
     return '';
   }
@@ -44,7 +55,14 @@ function readPass(): string {
 function askPass(wrong: boolean): Promise<string | null> {
   // One prompt even when subtitles + review ask at the same moment.
   asking ??= Promise.resolve().then(() => {
-    const p = window.prompt(wrong ? 'รหัสเข้าแอปไม่ถูกต้อง ลองอีกครั้งค่ะ' : 'ใส่รหัสเข้าแอป (ขอจากผู้ดูแลแอป)')?.trim() || null;
+    let msg = wrong ? 'รหัสเข้าแอปไม่ถูกต้อง ลองอีกครั้งค่ะ' : 'ใส่รหัสเข้าแอป (ขอจากผู้ดูแลแอป)';
+    let p: string | null = null;
+    for (let tries = 0; tries < 3; tries++) {
+      p = window.prompt(msg)?.trim() || null;
+      if (!p || validPass(p)) break;
+      msg = 'รหัสเป็นภาษาอังกฤษและตัวเลข เปลี่ยนแป้นพิมพ์เป็นภาษาอังกฤษแล้วใส่ใหม่ค่ะ';
+      p = null;
+    }
     try {
       if (p) localStorage.setItem(PASS_KEY, p);
       else localStorage.removeItem(PASS_KEY);
@@ -60,15 +78,24 @@ function askPass(wrong: boolean): Promise<string | null> {
 export async function api<T>(fn: 'coach' | 'live-token', body: object, retried = false): Promise<T> {
   const token = await accessToken();
   const pass = readPass();
-  const res = await fetch(`/api/${fn}`, {
-    method: 'POST',
+  // A stalled mobile connection must not leave a screen spinning forever.
+  const timeoutMs = fn === 'live-token' ? 15_000 : 35_000;
+  let res: Response;
+  try {
+    res = await fetch(`/api/${fn}`, {
+      signal: AbortSignal.timeout?.(timeoutMs),
+      method: 'POST',
     headers: {
       'content-type': 'application/json',
       ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...(pass ? { 'x-app-passcode': pass } : {}),
     },
     body: JSON.stringify(body),
-  });
+    });
+  } catch (e) {
+    if ((e as Error)?.name === 'TimeoutError' || (e as Error)?.name === 'AbortError') throw new ApiError('BUSY', 0);
+    throw e;
+  }
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && data.error === 'PASSCODE_REQUIRED' && !retried) {
     // Another call already got a new passcode while this one was in flight: just retry.

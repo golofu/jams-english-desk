@@ -13,7 +13,8 @@ export async function audioCtx(): Promise<AudioContext> {
       if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume().catch(() => undefined);
     };
   }
-  if (ctx.state !== 'running') await ctx.resume();
+  // resume() can stay pending on iOS while another app holds the audio session: never hang on it.
+  if (ctx.state !== 'running') await Promise.race([ctx.resume().catch(() => undefined), new Promise((r) => setTimeout(r, 3000))]);
   return ctx;
 }
 
@@ -136,7 +137,8 @@ export class PcmPlayer {
     this.next = 0;
   }
   get playing() {
-    return this.sources.size > 0;
+    // A suspended/interrupted context never fires onended: don't report "speaking" forever.
+    return this.sources.size > 0 && this.ac.state === 'running';
   }
   level(): number {
     if (!this.sources.size) return 0;
@@ -194,7 +196,7 @@ export function speak(text: string, opts: { rate?: number; gender?: 'male' | 'fe
     // No real audio tap on speechSynthesis — simulate mouth movement per word.
     let timer = 0;
     // Some engines never fire onend; never let a caller wait forever.
-    const words = text.split(/s+/).length;
+    const words = text.trim().split(/\s+/).length;
     const safety = window.setTimeout(() => done(), ((words * 0.5) / (u.rate || 1) + 4) * 1000);
     u.onstart = () => {
       timer = window.setInterval(() => (speakingLevel = 0.25 + Math.random() * 0.6), 110);

@@ -34,8 +34,9 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
     const charId = scenario.characters[visits(scenario.id) % scenario.characters.length];
     const today = localDayIndex();
     const isMonday = new Date(`${dayStr()}T12:00:00`).getDay() === 1;
-    const topics = JIMMY_TOPICS.filter((t) => !t.monday || isMonday);
-    const topic = topics[today % topics.length];
+    // Monday always opens with the weekend topic; other days rotate through the rest.
+    const topics = JIMMY_TOPICS.filter((t) => !t.monday);
+    const topic = (isMonday && JIMMY_TOPICS.find((t) => t.monday)) || topics[today % topics.length];
     // Warm-up primes today's role-play (2 key phrases) + the phrase that has waited longest.
     const due = data.phrases.filter((p) => p.due <= dayStr()).sort(byDue)[0];
     const warm = due ? [...scenario.keyPhrases.slice(0, 2), due] : scenario.keyPhrases.slice(0, 3);
@@ -48,11 +49,12 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
   const [chatLogged, setChatLogged] = useState(false);
 
   /** Warm-up + coach chat is real practice: it counts for the streak even if the role-play fails. */
-  function logChat() {
+  function logChat(minutes: number) {
     if (chatLogged) return;
     setChatLogged(true);
-    update('sessions', (s) => [{ id: uid(), date: dayStr(), kind: 'morning', level: prof.level, minutes: 8, createdAt: Date.now() }, ...s]);
+    update('sessions', (s) => [{ id: uid(), date: startDay, kind: 'morning', level: prof.level, minutes, createdAt: Date.now() }, ...s]);
   }
+  const [startDay] = useState(() => dayStr()); // a session that runs past midnight stays on the day it began
 
   if (step === 'start')
     return (
@@ -85,6 +87,7 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
   if (step === 'warmup')
     return (
       <div className="screen">
+        <button className="link back" onClick={onExit}>‹ กลับ</button>
         <div className="kicker">ขั้นที่ 1 · Warm-up</div>
         <h3>ฟังแล้วพูดตาม</h3>
         <Shadowing phrases={plan.warm} speed={prof.speed} onDone={() => setStep('chat')} />
@@ -104,9 +107,13 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
         situationTh={`คุยเล่นกับ ${prof.coachName} เรื่อง "${plan.topic.th}" ตอบสั้นๆ ก็ได้ ไม่ต้องกลัวผิด`}
         system={jimmyChatPrompt({ coachName: prof.coachName, speed: prof.speed, topic: plan.topic.en, memory: prof.memory, level: prof.level })}
         seconds={300}
-        onCancel={onExit}
-        onDone={() => {
-          logChat();
+        // Shy or offline in the chat: the warm-up still counts, and she can go on to the role-play.
+        onCancel={() => {
+          logChat(3);
+          setStep(busy ? 'done' : 'roleplay');
+        }}
+        onDone={(r) => {
+          logChat(3 + Math.max(1, Math.round(r.seconds / 60)));
           setStep(busy ? 'done' : 'roleplay');
         }}
       />

@@ -255,7 +255,14 @@ export function reviewPhrase(p: SavedPhrase, knew: boolean): SavedPhrase {
 }
 
 /** "Nice to meet you." and "nice to meet you" are the same phrase. */
-export const phraseKey = (en: string) => en.trim().toLowerCase().replace(/[.!?,;:]+$/g, '').replace(/\s+/g, ' ');
+export const phraseKey = (en: string) =>
+  en
+    .trim()
+    .toLowerCase()
+    .replace(/[’‘]/g, "'") // the AI writes curly quotes, the curriculum straight ones
+    .replace(/[“”]/g, '"')
+    .replace(/[.!?,;:]+$/g, '')
+    .replace(/\s+/g, ' ');
 
 /** Oldest-due first, so phrases that have waited longest come back before new ones. */
 export const byDue = (a: SavedPhrase, b: SavedPhrase) => a.due.localeCompare(b.due) || a.addedAt - b.addedAt;
@@ -265,7 +272,7 @@ export function addPhrases(existing: SavedPhrase[], items: { en: string; th: str
   const fresh = items
     // AI output: skip anything malformed, and duplicates within the same batch.
     .filter((i) => {
-      if (!i || typeof i.en !== 'string' || typeof i.th !== 'string' || !i.en.trim()) return false;
+      if (!i || typeof i.en !== 'string' || typeof i.th !== 'string' || !i.en.trim() || !i.th.trim()) return false; // blank Thai = blank quiz answer
       const k = phraseKey(i.en);
       if (seen.has(k)) return false;
       seen.add(k);

@@ -129,7 +129,7 @@ export function Prep({ onExit }: { onExit: () => void }) {
       </button>
       <div className="or">หรือ</div>
       <button
-        className={`btn big ${rec ? 'danger' : ''}`}
+        className={`btn big hold ${rec ? 'danger' : ''}`}
         disabled={busy}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);

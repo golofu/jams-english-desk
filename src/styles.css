@@ -254,3 +254,13 @@ textarea:focus, input:focus { outline: 2px solid color-mix(in srgb, var(--brand)
 .live-caption { opacity: 0.85; }
 .call-head { flex: 1; min-width: 0; }
 .call-top .link { white-space: nowrap; }
+
+/* --- small-phone + iOS fixes --- */
+/* iOS zooms into inputs under 16px and a home-screen app stays zoomed afterwards. */
+input, textarea, select { font-size: 16px; }
+/* Keep "นึกไม่ออก" and "จบ" on screen on small phones: the avatar shrinks with the screen height. */
+.call.live .avatar-wrap .avatar-svg { height: min(265px, 30dvh); width: calc(min(265px, 30dvh) / 1.15); }
+.call.live .controls { position: sticky; bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 2; }
+/* Press-and-hold buttons: a small finger drift must not turn into a scroll (pointercancel). */
+.hold { touch-action: none; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+.chip-pair { display: inline-flex; gap: 2px; }

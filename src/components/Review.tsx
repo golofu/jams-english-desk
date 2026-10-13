@@ -37,6 +37,7 @@ export function Review({ scenario, call, kind, character, onNext, nextLabel }: {
   const [busy, setBusy] = useState(true);
   const [levelUp, setLevelUp] = useState<number | null>(null);
   const logId = useRef<string | null>(null);
+  const startDay = useRef(dayStr(new Date(Date.now() - call.seconds * 1000))); // the day the call started (23:55 stays tonight)
 
   // Log the session the moment the call ends: 20 minutes of practice must count for
   // the streak even if the free AI review fails. Stars are attached when they arrive.
@@ -45,7 +46,7 @@ export function Review({ scenario, call, kind, character, onNext, nextLabel }: {
     const id = uid();
     logId.current = id;
     const log: SessionLog = {
-      id, date: dayStr(), kind, level: get().profile.level, scenarioId: scenario.id, scenarioTitle: scenario.titleTh,
+      id, date: startDay.current, kind, level: get().profile.level, scenarioId: scenario.id, scenarioTitle: scenario.titleTh,
       character, minutes: Math.max(1, Math.round(call.seconds / 60)), createdAt: Date.now(),
     };
     update('sessions', (s) => [log, ...s]);
@@ -173,12 +174,17 @@ export function Review({ scenario, call, kind, character, onNext, nextLabel }: {
 
           {ev.words.length > 0 && (
             <div className="card">
-              <div className="card-title">📚 คำศัพท์ใหม่ (เก็บเข้าคลังแล้ว)</div>
+              <div className="card-title">📚 คำศัพท์ใหม่ (3 คำแรกเก็บเข้าคลังแล้ว แตะ ⭐ เพื่อเก็บเพิ่ม)</div>
               <div className="chips">
                 {ev.words.map((w, i) => (
-                  <button key={i} className="chip" onClick={() => speak(w.en, { rate: 0.85 })}>
-                    {w.en} <small>{w.th}</small>
-                  </button>
+                  <span key={i} className="chip-pair">
+                    <button className="chip" onClick={() => speak(w.en, { rate: 0.85 })}>
+                      {w.en} <small>{w.th}</small>
+                    </button>
+                    {i >= 3 && (
+                      <button className="chip" aria-label="เก็บเข้าคลัง" onClick={() => update('phrases', (ps) => addPhrases(ps, [w], scenario.titleTh))}>⭐</button>
+                    )}
+                  </span>
                 ))}
               </div>
             </div>
@@ -191,7 +197,8 @@ export function Review({ scenario, call, kind, character, onNext, nextLabel }: {
           🔄 ให้ {prof.coachName} ดูผลอีกครั้ง
         </button>
       )}
-      <button className="btn primary big" onClick={onNext} disabled={busy}>
+      {/* Never block the way forward: the session is already logged, and a stalled review must not trap Jam. */}
+      <button className="btn primary big" onClick={onNext}>
         {nextLabel}
       </button>
     </div>

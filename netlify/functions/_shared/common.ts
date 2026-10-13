@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { GoogleGenAI } from '@google/genai';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
@@ -25,6 +26,9 @@ export function gemini(apiVersion?: string): GoogleGenAI {
   return new GoogleGenAI({ apiKey, httpOptions: { timeout: 30_000, ...(apiVersion ? { apiVersion } : {}) } });
 }
 
+const digest = (s: string) => createHash('sha256').update(s).digest();
+const samePass = (a: string, b: string) => !!a && timingSafeEqual(digest(a), digest(b));
+
 let sb: SupabaseClient | null = null;
 function supabaseServer(url: string, anon: string) {
   // One client per function instance; no session storage on the server.
@@ -43,9 +47,10 @@ export async function requireUser(req: Request): Promise<void> {
   if (!url || !anon) {
     if (process.env.ALLOW_OPEN_DEV === '1') return;
     // Free middle ground before Supabase is set up: a shared app passcode.
-    const passcode = process.env.APP_PASSCODE;
+    const passcode = process.env.APP_PASSCODE?.trim();
     if (passcode) {
-      if (req.headers.get('x-app-passcode') === passcode) return;
+      if (passcode.length < 16) throw new HttpError(503, 'AUTH_NOT_CONFIGURED'); // README: 16+ random chars
+      if (samePass(req.headers.get('x-app-passcode')?.trim() ?? '', passcode)) return;
       // Slow down guessing; with a long random passcode this makes brute force pointless.
       if (req.headers.get('x-app-passcode')) await new Promise((r) => setTimeout(r, 1500));
       throw new HttpError(401, 'PASSCODE_REQUIRED');
@@ -62,6 +67,8 @@ export async function requireUser(req: Request): Promise<void> {
   if (!token) throw new HttpError(401, 'LOGIN_REQUIRED');
   const { data, error } = await supabaseServer(url, anon).auth.getUser(token);
   if (error || !data.user) throw new HttpError(401, 'LOGIN_REQUIRED');
+  // Only a verified Google identity counts: an unconfirmed email/password sign-up could claim Jam's address.
+  if (!data.user.email_confirmed_at || data.user.app_metadata?.provider !== 'google') throw new HttpError(403, 'NOT_ALLOWED');
   if (!allowed.includes((data.user.email || '').toLowerCase())) throw new HttpError(403, 'NOT_ALLOWED');
 }
 

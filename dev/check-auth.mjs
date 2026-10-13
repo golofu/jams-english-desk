@@ -11,9 +11,13 @@ async function run(label, env, headers = {}) {
 }
 await run('nothing configured', {});
 await run('dev flag', { ALLOW_OPEN_DEV: '1' });
-await run('passcode, none sent', { APP_PASSCODE: 'abc' });
-await run('passcode, wrong', { APP_PASSCODE: 'abc' }, { 'x-app-passcode': 'nope' });
-await run('passcode, right', { APP_PASSCODE: 'abc' }, { 'x-app-passcode': 'abc' });
+const P = 'abcdefghjk234567xyz'; // 16+ chars, like a real passcode
+await run('passcode too short', { APP_PASSCODE: 'abc' }, { 'x-app-passcode': 'abc' });
+await run('passcode, none sent', { APP_PASSCODE: P });
+await run('passcode, wrong', { APP_PASSCODE: P }, { 'x-app-passcode': 'nope' });
+await run('passcode, right', { APP_PASSCODE: P }, { 'x-app-passcode': P });
+await run('passcode, env has trailing newline', { APP_PASSCODE: `${P}
+` }, { 'x-app-passcode': P });
 await run('supabase, empty allowlist', { SUPABASE_URL: 'https://x.supabase.co', SUPABASE_ANON_KEY: 'k' });
 await run('supabase, allowlist, no token', { SUPABASE_URL: 'https://x.supabase.co', SUPABASE_ANON_KEY: 'k', ALLOWED_EMAIL: 'jam@example.com' });
 await vite.close();

@@ -25,7 +25,20 @@ window.addEventListener('vite:preloadError', () => {
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+  // The first visit loads its JS/CSS before the service worker controls the page, so hand the
+  // worker this build's files: the next launch then works offline (otherwise a white screen).
+  navigator.serviceWorker.ready
+    .then((reg) => {
+      const assets = performance
+        .getEntriesByType('resource')
+        .map((r) => new URL(r.name).pathname)
+        .filter((p) => p.startsWith('/assets/'));
+      reg.active?.postMessage({ type: 'cache-assets', assets });
+    })
+    .catch(() => undefined);
 }
+// Ask the browser not to evict Jam's progress and voice recordings when storage runs low.
+navigator.storage?.persist?.().catch(() => undefined);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

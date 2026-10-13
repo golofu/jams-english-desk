@@ -59,11 +59,13 @@ export class Conversation {
   async start() {
     this.setState('connecting');
     const ac = await audioCtx();
+    if (this.ended) return; // Jam left before the mic prompt: don't turn the mic on
     this.player = new PcmPlayer(ac);
     // Mic first: the permission prompt comes before the AI talks, and on iOS the
     // audio session is play-and-record from the start.
     this.mic = await startMic((pcm) => this.onMic(pcm));
     if (this.ended) return this.cleanup();
+    document.addEventListener('visibilitychange', this.onVisible);
     try {
       await this.startLive();
     } catch (e) {
@@ -75,7 +77,8 @@ export class Conversation {
   }
 
   // ---------------- Live mode ----------------
-  private async startLive() {
+  private liveRetried = false;
+  private async startLive(recap = '') {
     // Load the SDK while the token is minted; the token must be used within 60 s.
     const [{ GoogleGenAI, Modality }, { token, model }] = await Promise.all([
       import('@google/genai'),
@@ -94,7 +97,7 @@ export class Conversation {
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: this.o.voice } } },
-        systemInstruction: this.o.system,
+        systemInstruction: recap ? `${this.o.system}\n${recap}` : this.o.system,
         inputAudioTranscription: {},
         outputAudioTranscription: {},
         // Beginners pause mid-sentence; wait longer before the AI jumps in.
@@ -108,7 +111,25 @@ export class Conversation {
           this.session = null;
           if (this.ended) return;
           console.warn('live closed', e.code, e.reason);
-          // Mid-call drop (network, server limit, quota): carry on in turn mode.
+          // A network blip or server time limit: reconnect once with a recap, keeping Jimmy's real voice.
+          if (!this.liveRetried && !/quota|exhaust/i.test(e.reason || '')) {
+            this.liveRetried = true;
+            this.player?.clear();
+            this.flushJam();
+            this.flushAi();
+            const history = this.lines
+              .slice(-12)
+              .map((l) => `${l.who === 'jam' ? 'JAM' : 'YOU'}: ${l.text}`)
+              .join('\n');
+            const recap = `(The call dropped and reconnected. The conversation so far:\n${history}\nContinue naturally from there; do not greet her again.)`;
+            this.startLive(recap).catch(() => {
+              if (this.ended) return;
+              this.o.onNotice('การเชื่อมต่อหลุด สลับเป็นโหมดสำรองให้แล้ว คุยต่อได้เลยค่ะ');
+              this.startTurnMode(true).catch(() => this.o.onNotice('เชื่อมต่อ AI ไม่ได้ กด "จบ" แล้วลองใหม่ภายหลังนะคะ'));
+            });
+            return;
+          }
+          // Quota or a second drop: carry on in turn mode.
           this.o.onNotice('การเชื่อมต่อหลุด สลับเป็นโหมดสำรองให้แล้ว คุยต่อได้เลยค่ะ');
           this.startTurnMode(true).catch(() => this.o.onNotice('เชื่อมต่อ AI ไม่ได้ กด "จบ" แล้วลองใหม่ภายหลังนะคะ'));
         },
@@ -126,8 +147,11 @@ export class Conversation {
       clearTimeout(timer);
     }
     this.mode = 'live';
-    this.session.sendRealtimeInput({ text: KICKOFF });
-    this.setState('thinking');
+    if (recap) this.setState('listening');
+    else {
+      this.session.sendRealtimeInput({ text: KICKOFF });
+      this.setState('thinking');
+    }
   }
 
   private onLiveMessage(m: LiveServerMessage) {
@@ -142,7 +166,9 @@ export class Conversation {
       if (this.aiBuf) this.flushAi();
       this.jamBuf += sc.inputTranscription.text;
     }
-    if (sc.outputTranscription?.text) {
+    // While Jam holds "นึกไม่ออก" the partner's audio is dropped, so drop its words too:
+    // the transcript (and the review/stars) must only contain what she actually heard.
+    if (sc.outputTranscription?.text && !this.holding) {
       if (this.jamBuf) {
         this.flushJam();
         this.turnJamLine = this.lines[this.lines.length - 1] ?? null;
@@ -222,6 +248,11 @@ export class Conversation {
         if (!this.holding) {
           this.setState('speaking');
           await speak(r.reply, { rate: this.o.speechRate, gender: this.o.gender });
+          // speak() may resolve early (engine quirks); keep the mic closed until the voice is
+          // really done, or the fallback would record its own voice as Jam's turn.
+          for (let t = 0; t < 60 && !this.ended && 'speechSynthesis' in window && speechSynthesis.speaking; t++) {
+            await new Promise((res) => setTimeout(res, 250));
+          }
         }
       }
       return true;
@@ -290,11 +321,18 @@ export class Conversation {
     this.helpChunks = [];
     this.player?.clear();
     stopSpeaking();
-    // Tell Live the stream paused, so it doesn't wait on (or answer) half a sentence.
-    if (this.mode === 'live') this.session?.sendRealtimeInput({ audioStreamEnd: true });
+    this.resetVad();
+    // No audioStreamEnd here: it makes Live answer the half sentence right away (an answer
+    // Jam would never hear). With no audio frames the server simply waits for more.
+  }
+  private resetVad() {
+    this.utter = [];
+    this.voiced = false;
+    this.loudRun = this.silent = 0;
   }
   async releaseHelp(context: string): Promise<{ en: string; th: string; sayIt: string; heard: string } | null> {
     this.holding = false;
+    this.resetVad();
     const chunks = this.helpChunks.slice(0, 300); // ≤30 s
     this.helpChunks = [];
     if (chunks.length < 5) return null; // < 0.5 s: accidental tap
@@ -339,7 +377,29 @@ export class Conversation {
     this.setState('ended');
   }
 
+  /** Back from LINE / a phone call / a locked screen: iOS may have frozen the audio or killed the mic. */
+  private onVisible = async () => {
+    if (document.hidden || this.ended) return;
+    this.player?.clear();
+    const ac = await audioCtx();
+    if (this.ended) return;
+    if (ac.state !== 'running') {
+      this.o.onNotice('แตะหน้าจอ 1 ครั้งเพื่อคุยต่อค่ะ');
+      document.addEventListener('pointerdown', () => void audioCtx(), { once: true });
+    }
+    if (this.mic?.stream.getAudioTracks().every((t) => t.readyState === 'ended')) {
+      this.mic.stop();
+      try {
+        this.mic = await startMic((pcm) => this.onMic(pcm));
+        if (this.ended) this.cleanup();
+      } catch {
+        this.o.onNotice('ไมค์หยุดทำงาน กด "จบ" แล้วเริ่มใหม่นะคะ');
+      }
+    }
+  };
+
   private cleanup() {
+    document.removeEventListener('visibilitychange', this.onVisible);
     this.mic?.stop();
     this.mic = null;
     this.session?.close();

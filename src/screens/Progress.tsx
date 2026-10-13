@@ -18,13 +18,22 @@ export function Progress() {
 
   async function play(snap: SnapshotMeta) {
     setMsg('');
-    let blob = await getClip(snap.id);
-    if (!blob && supabase && snap.remotePath) {
-      const { data: d } = await supabase.storage.from('snapshots').download(snap.remotePath);
-      blob = d ?? undefined;
+    // Create the player inside the tap: iOS blocks play() that starts after async work otherwise.
+    const audio = new Audio();
+    try {
+      let blob = await getClip(snap.id);
+      if (!blob && supabase && snap.remotePath) {
+        const { data: d } = await supabase.storage.from('snapshots').download(snap.remotePath);
+        blob = d ?? undefined;
+      }
+      if (!blob) return setMsg('ไม่พบไฟล์เสียงในเครื่องนี้');
+      const url = URL.createObjectURL(blob);
+      audio.onended = () => URL.revokeObjectURL(url);
+      audio.src = url;
+      await audio.play();
+    } catch {
+      setMsg('เปิดเสียงไม่ได้ ลองแตะอีกครั้งนะคะ');
     }
-    if (!blob) return setMsg('ไม่พบไฟล์เสียงในเครื่องนี้');
-    void new Audio(URL.createObjectURL(blob)).play();
   }
 
   if (recording)
