@@ -61,8 +61,10 @@ async function generate(prompt: string, schema: object, audio?: Audio, plan: Pla
   // Gemini-first jobs still reach Groq quickly: two Gemini tries, then Groq, then the rest.
   // Models that said "daily quota used up" are skipped for an hour (per warm instance).
   const live = (c: Candidate) => (exhaustedUntil.get(`${c.provider}:${c.model}`) ?? 0) < Date.now();
-  const gem = geminiList.filter(live);
-  const grq = groqList.filter(live);
+  // COACH_PROVIDERS=gemini|groq pins one provider (side-by-side quality tests); default both.
+  const only = process.env.COACH_PROVIDERS;
+  const gem = only === 'groq' ? [] : geminiList.filter(live);
+  const grq = only === 'gemini' ? [] : groqList.filter(live);
   const models = plan.groqFirst ? [...grq, ...gem] : [...gem.slice(0, 2), ...grq, ...gem.slice(2)];
   const deadline = Date.now() + BUDGET_MS;
   let sawQuota = false;
@@ -156,7 +158,7 @@ const actions: Record<string, (b: Body, audio?: Audio) => Promise<unknown>> = {
       `${LEARNER}
 Jam is in the middle of an English role-play and got stuck. She expressed what she wants to say in Thai (${audio ? 'see the attached audio' : `text: "${cap(b.text, 400)}"`}).
 Conversation context: ${cap(b.context, 1500) || 'general workplace conversation'}.
-Give ONE short English sentence (max 14 words) she can say right now, its Thai meaning, a Thai pronunciation guide written in Thai script for the tricky words, and heard = what you understood she said (Thai).`,
+Give ONE short English sentence (max 14 words) she can say right now, its Thai meaning, sayIt = how to pronounce the ENGLISH sentence, written in Thai letters (e.g. "Would you like coffee?" → "วูด ยู ไลค์ คอฟฟี่"), and heard = what you understood she said (Thai).`,
       {
         type: 'object',
         properties: { en: str, th: str, sayIt: str, heard: str },
@@ -171,7 +173,7 @@ Give ONE short English sentence (max 14 words) she can say right now, its Thai m
     const items = (Array.isArray(b.lines) ? b.lines : []).slice(0, 20).map((l: unknown) => cap(l, 600));
     if (!items.length) return { th: [] };
     return generate(
-      `Translate each English line into natural, easy Thai for a beginner learner. Keep the same order and count.\n${JSON.stringify(items)}`,
+      `Translate each English line into natural, easy Thai for a beginner learner. Keep the same order and count. Pick one natural form — never write alternatives with a slash (ครับ/ค่ะ, ผม/ฉัน).\n${JSON.stringify(items)}`,
       { type: 'object', properties: { th: { type: 'array', items: str } }, required: ['th'] },
       undefined,
       { gemini: SUBTITLE_MODELS, groqFirst: true }, // the most frequent call by far
@@ -198,7 +200,7 @@ If she spoke fewer than 2 times, give 1 star each, and make noteTh/noteEn gently
 good: up to 3 things she said well (quote her words, Thai praise).
 better: up to 3 of her sentences rewritten more naturally (said = her words, better = improved, th = Thai meaning, why = short Thai reason).
 words: 5 useful words/phrases from this scenario with Thai meaning.
-noteTh: 1-2 warm sentences from you (the coach) in Thai. noteEn: one short simple English sentence from you.
+noteTh: 1-2 warm sentences from you (the coach, a man: end with ครับ, never ค่ะ) in Thai. noteEn: one short simple English sentence from you.
 memory: one English sentence summarizing what she practiced and what to work on next (you will read this tomorrow).`,
       {
         type: 'object',
@@ -224,12 +226,12 @@ memory: one English sentence summarizing what she practiced and what to work on 
   },
 
   async prep(b, audio) {
-    return generate(
+    const r = (await generate(
       `${LEARNER}
 Jam described (in Thai) a real situation she will face soon at work: ${audio ? 'see the attached audio' : `"${cap(b.text, 800)}"`}.
 ${PRIVACY}
 Design a short practice role-play for it. If the description is not a workplace situation, design a polite small-talk scene instead.
-character: pick the best partner id: "sarah" (a visitor/guest, friendly), "tanaka" (Japanese client, polite), "ben" (hotel/airline/restaurant staff).
+character: pick the best partner id (never "jam" — Jam is the learner, not the partner): "sarah" (a visitor/guest, friendly), "tanaka" (Japanese client, polite), "ben" (hotel/airline/restaurant staff).
 partnerRole: who the partner is in this scene (English, one line). opening: the partner's first line (simple English).
 keyPhrases: exactly 5 sentences Jam will need, simple English + Thai.
 tasks: 2-4 short English checklist items for Jam to accomplish.`,
@@ -250,7 +252,12 @@ tasks: 2-4 short English checklist items for Jam to accomplish.`,
       },
       audio,
       { lang: 'th' }, // rare and quality matters: Gemini first, Groq as backup
-    );
+    )) as Record<string, any>;
+    // Groq's schema mode is best-effort: an unknown partner id would crash the Prep screen.
+    if (!['sarah', 'tanaka', 'ben'].includes(r.character)) r.character = 'sarah';
+    if (!Array.isArray(r.tasks)) r.tasks = [];
+    if (!Array.isArray(r.keyPhrases)) r.keyPhrases = [];
+    return r;
   },
 
   async turn(b, audio) {
