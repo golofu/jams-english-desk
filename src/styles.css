@@ -217,8 +217,6 @@ textarea:focus, input:focus { outline: 2px solid color-mix(in srgb, var(--brand)
 .meter { height: 12px; border-radius: 6px; background: rgba(0, 0, 0, 0.08); overflow: hidden; margin: 8px 0 4px; }
 .meter-fill { height: 100%; background: linear-gradient(90deg, #22c55e, #f59e0b); transition: width 0.08s linear; }
 .rec-hint { text-align: center; font-size: 0.85rem; color: var(--muted); font-weight: 400; }
-.rec-done { text-align: center; font-weight: 700; color: var(--ok); }
-.rec-done.playing { color: var(--deep); }
 .meter.big { height: 22px; border-radius: 11px; margin: 4px 0; }
 .miccheck { display: flex; flex-direction: column; gap: 12px; }
 .mic-ok { display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--ok); font-weight: 900; font-size: 1.1rem; text-align: center; }

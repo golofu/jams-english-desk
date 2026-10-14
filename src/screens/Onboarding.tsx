@@ -37,7 +37,7 @@ export function Onboarding() {
           <div className="tc-icon">☀️</div>
           <div className="tc-body">
             <div className="tc-title">Morning Talk · 05:00</div>
-            <div className="tc-sub">พูดจริงจัง 20 นาที: พูดตาม → คุยกับ Jimmy → Role-play → ดูผล</div>
+            <div className="tc-sub">พูดจริงจัง 17 นาที: คุยกับ Jimmy → Role-play → ดูผล</div>
           </div>
         </div>
         <div className="task-card night static">

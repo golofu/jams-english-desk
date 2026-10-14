@@ -31,7 +31,7 @@ export function Home({ go }: { go: Go }) {
       <div className="tc-icon">☀️</div>
       <div className="tc-body">
         <div className="tc-title">Morning Talk</div>
-        <div className="tc-sub">{prof.morningTime} · พูด 20 นาที</div>
+        <div className="tc-sub">{prof.morningTime} · พูด 17 นาที</div>
       </div>
       <div className="tc-go">{didMorning ? '✓ เสร็จแล้ว' : 'เริ่ม ›'}</div>
     </button>

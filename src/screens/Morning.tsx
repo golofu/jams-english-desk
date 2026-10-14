@@ -3,12 +3,11 @@ import { CHARACTERS } from '../data/characters';
 import { JIMMY_TOPICS, LEVELS, SCENARIOS } from '../data/curriculum';
 import { CallView, type CallResult } from '../components/CallView';
 import { Review } from '../components/Review';
-import { Shadowing } from '../components/Shadowing';
 import { MicCheck } from '../components/MicCheck';
 import { Avatar } from '../components/Avatar';
 import { jimmyChatPrompt, rolePlayPrompt } from '../lib/prompts';
 import { unlockSpeech } from '../lib/audio';
-import { byDue, dayStr, localDayIndex, passedStars, uid } from '../lib/store';
+import { dayStr, localDayIndex, passedStars, uid } from '../lib/store';
 import { useApp } from '../state';
 
 /** "… (3 days ago)" unless it really was the last practice day. */
@@ -18,9 +17,9 @@ function memoryWithAge(memory: string, date?: string): string {
   return days <= 1 || Number.isNaN(days) ? memory : `${memory} (that was ${days} days ago)`;
 }
 
-type Step = 'start' | 'miccheck' | 'warmup' | 'chat' | 'roleplay' | 'review' | 'done';
+type Step = 'start' | 'miccheck' | 'chat' | 'roleplay' | 'review' | 'done';
 
-/** Morning Talk: warm-up → chat with Jimmy → role-play → review (≈20 min). */
+/** Morning Talk: mic check → chat with Jimmy → role-play → review (≈17 min). It's a speaking app: talk to the AI from the first minute. */
 export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId?: string }) {
   const { data, update } = useApp();
   const prof = data.profile;
@@ -45,10 +44,7 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
     // Monday always opens with the weekend topic; other days rotate through the rest.
     const topics = JIMMY_TOPICS.filter((t) => !t.monday);
     const topic = (isMonday && JIMMY_TOPICS.find((t) => t.monday)) || topics[today % topics.length];
-    // Warm-up primes today's role-play (2 key phrases) + the phrase that has waited longest.
-    const due = data.phrases.filter((p) => p.due <= dayStr()).sort(byDue)[0];
-    const warm = due ? [...scenario.keyPhrases.slice(0, 2), due] : scenario.keyPhrases.slice(0, 3);
-    return { scenario, character: CHARACTERS[charId], topic, warm };
+    return { scenario, character: CHARACTERS[charId], topic };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prof.level, scenarioId]);
 
@@ -56,7 +52,7 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
   const level = LEVELS[prof.level - 1];
   const [chatLogged, setChatLogged] = useState(false);
 
-  /** Warm-up + coach chat is real practice: it counts for the streak even if the role-play fails. */
+  /** The coach chat is real practice: it counts for the streak even if the role-play fails. */
   function logChat(minutes: number) {
     if (chatLogged) return;
     setChatLogged(true);
@@ -71,19 +67,18 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
         <div className="kicker">☀️ Morning Talk · ระดับ {prof.level} {level.nameEn}</div>
         <h2>อรุณสวัสดิ์ แจม!</h2>
         <div className="plan">
-          <PlanRow n="1" t="Warm-up พูดตาม" m="3 นาที" />
-          <PlanRow n="2" t={`คุยกับ ${prof.coachName}: ${plan.topic.th}`} m="5 นาที" />
-          <PlanRow n="3" t={`Role-play: ${plan.scenario.titleTh} กับ ${plan.character.name}`} m="8 นาที" dim={busy} />
-          <PlanRow n="4" t="ดูผล + เก็บประโยค" m="4 นาที" dim={busy} />
+          <PlanRow n="1" t={`คุยกับ ${prof.coachName}: ${plan.topic.th}`} m="5 นาที" />
+          <PlanRow n="2" t={`Role-play: ${plan.scenario.titleTh} กับ ${plan.character.name}`} m="8 นาที" dim={busy} />
+          <PlanRow n="3" t="ดูผล + เก็บประโยค" m="4 นาที" dim={busy} />
         </div>
         <label className="toggle">
           <input type="checkbox" checked={busy} onChange={(e) => setBusy(e.target.checked)} />
-          วันนี้ยุ่ง ทำแค่ข้อ 1–2 (8 นาที) ยังนับวันต่อเนื่อง
+          วันนี้ยุ่ง คุยกับโค้ชอย่างเดียว (5 นาที) ยังนับวันต่อเนื่อง
         </label>
         <button
           className="btn primary big"
           onClick={() => {
-            unlockSpeech(); // iOS: allow the warm-up to auto-play after this tap
+            unlockSpeech(); // iOS: allow later speech after this tap
             setStep('miccheck');
           }}
         >
@@ -97,17 +92,7 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
     return (
       <div className="screen">
         <button className="link back" onClick={onExit}>‹ กลับ</button>
-        <MicCheck onPass={() => setStep('warmup')} onSkip={() => setStep('warmup')} />
-      </div>
-    );
-
-  if (step === 'warmup')
-    return (
-      <div className="screen">
-        <button className="link back" onClick={onExit}>‹ กลับ</button>
-        <div className="kicker">ขั้นที่ 1 · Warm-up</div>
-        <h3>ฟังแล้วพูดตาม</h3>
-        <Shadowing phrases={plan.warm} speed={prof.speed} onDone={() => setStep('chat')} />
+        <MicCheck onPass={() => setStep('chat')} onSkip={() => setStep('chat')} />
       </div>
     );
 
@@ -119,18 +104,17 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
         key="chat"
         character={jimmy}
         displayName={prof.coachName}
-        kicker="ขั้นที่ 2 · คุยกับโค้ช"
+        kicker="ขั้นที่ 1 · คุยกับโค้ช"
         title={plan.topic.en}
         situationTh={`คุยเล่นกับ ${prof.coachName} เรื่อง "${plan.topic.th}" ตอบสั้นๆ ก็ได้ ไม่ต้องกลัวผิด`}
         system={jimmyChatPrompt({ coachName: prof.coachName, speed: prof.speed, topic: plan.topic.en, memory: memoryWithAge(prof.memory, prof.memoryDate), level: prof.level })}
         seconds={300}
-        // Shy or offline in the chat: the warm-up still counts, and she can go on to the role-play.
+        // Shy or offline in the chat: she can still go on to the role-play.
         onCancel={() => {
-          logChat(3);
           setStep(busy ? 'done' : 'roleplay');
         }}
         onDone={(r) => {
-          logChat(3 + Math.max(1, Math.round(r.seconds / 60)));
+          logChat(Math.max(1, Math.round(r.seconds / 60)));
           setStep(busy ? 'done' : 'roleplay');
         }}
       />
@@ -141,7 +125,7 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
       <CallView
         key="roleplay"
         character={plan.character}
-        kicker={`ขั้นที่ 3 · Role-play ระดับ ${prof.level}`}
+        kicker={`ขั้นที่ 2 · Role-play ระดับ ${prof.level}`}
         title={`${plan.scenario.titleTh} · ${plan.scenario.titleEn}`}
         situationTh={plan.scenario.situationTh}
         keyPhrases={plan.scenario.keyPhrases}
@@ -160,7 +144,7 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
   if (step === 'review' && call)
     return (
       <div className="screen">
-        <div className="kicker">ขั้นที่ 4 · ดูผล</div>
+        <div className="kicker">ขั้นที่ 3 · ดูผล</div>
         <Review scenario={plan.scenario} call={call} kind="morning" character={plan.character.id} onNext={() => setStep('done')} nextLabel="เสร็จแล้ว ›" />
       </div>
     );
