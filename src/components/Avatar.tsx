@@ -1,6 +1,9 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { Character } from '../data/characters';
 import type { AvatarStyle } from '../lib/store';
+import jimmyBase from '../assets/avatars/jimmy-pixar-base.jpg';
+import jimmyTalk from '../assets/avatars/jimmy-pixar-talk.jpg';
+import jimmyBlink from '../assets/avatars/jimmy-pixar-blink.jpg';
 
 type Props = {
   character: Character;
@@ -11,6 +14,11 @@ type Props = {
   size?: number;
   /** Accessible name, e.g. the coach's custom name. */
   label?: string;
+};
+
+type Portrait = { base: string; talk: string; blink: string };
+const PORTRAITS: Partial<Record<Character['id'], Partial<Record<AvatarStyle, Portrait>>>> = {
+  jimmy: { pixar: { base: jimmyBase, talk: jimmyTalk, blink: jimmyBlink } },
 };
 
 // Per-style proportions: same character, three looks.
@@ -73,6 +81,28 @@ export function Avatar({ character, style, level, state = 'idle', size = 260, la
   const mouthY = eyeY + 40 + S.chin * 0.3;
 
   const stroke = S.outline ? { stroke: '#3a2a22', strokeWidth: S.outline } : {};
+
+  // Painted portrait (3 frames: rest / talking / blink) where one exists; the drawn face otherwise.
+  const portrait = PORTRAITS[character.id]?.[style];
+  if (portrait)
+    return (
+      <svg viewBox="0 0 200 230" width={size} height={size * 1.15} role="img" aria-label={label ?? character.name} className="avatar-svg">
+        <defs>
+          <clipPath id={`frame${id}`}>
+            <circle cx="100" cy="115" r="100" />
+          </clipPath>
+        </defs>
+        <g clipPath={`url(#frame${id})`}>
+          <circle cx="100" cy="115" r="100" fill={L.bg[1]} />
+          <g transform={`translate(0 ${bob * 0.6}) rotate(${tilt * 0.5} 100 200)`}>
+            {/* All frames stay mounted so switching never flashes while an image loads. */}
+            <image href={portrait.base} x="-14" y="2" width="228" height="228" />
+            <image href={portrait.blink} x="-14" y="2" width="228" height="228" opacity={!talking && blink < 0.5 ? 1 : 0} />
+            <image href={portrait.talk} x="-14" y="2" width="228" height="228" opacity={Math.min(1, open * 2.5)} />
+          </g>
+        </g>
+      </svg>
+    );
 
   return (
     <svg viewBox="0 0 200 230" width={size} height={size * 1.15} role="img" aria-label={label ?? character.name} className="avatar-svg">
