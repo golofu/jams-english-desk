@@ -4,6 +4,7 @@ import { JIMMY_TOPICS, LEVELS, SCENARIOS } from '../data/curriculum';
 import { CallView, type CallResult } from '../components/CallView';
 import { Review } from '../components/Review';
 import { Shadowing } from '../components/Shadowing';
+import { MicCheck } from '../components/MicCheck';
 import { Avatar } from '../components/Avatar';
 import { jimmyChatPrompt, rolePlayPrompt } from '../lib/prompts';
 import { unlockSpeech } from '../lib/audio';
@@ -17,7 +18,7 @@ function memoryWithAge(memory: string, date?: string): string {
   return days <= 1 || Number.isNaN(days) ? memory : `${memory} (that was ${days} days ago)`;
 }
 
-type Step = 'start' | 'warmup' | 'chat' | 'roleplay' | 'review' | 'done';
+type Step = 'start' | 'miccheck' | 'warmup' | 'chat' | 'roleplay' | 'review' | 'done';
 
 /** Morning Talk: warm-up → chat with Jimmy → role-play → review (≈20 min). */
 export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId?: string }) {
@@ -83,11 +84,20 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
           className="btn primary big"
           onClick={() => {
             unlockSpeech(); // iOS: allow the warm-up to auto-play after this tap
-            setStep('warmup');
+            setStep('miccheck');
           }}
         >
           เริ่มเลย
         </button>
+      </div>
+    );
+
+  // Every step from here on needs the mic; a 3-second check beats finding out mid-call.
+  if (step === 'miccheck')
+    return (
+      <div className="screen">
+        <button className="link back" onClick={onExit}>‹ กลับ</button>
+        <MicCheck onPass={() => setStep('warmup')} onSkip={() => setStep('warmup')} />
       </div>
     );
 

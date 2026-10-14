@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { CHARACTERS } from '../data/characters';
 import { Avatar } from '../components/Avatar';
+import { MicCheck } from '../components/MicCheck';
 import { SPEECH_RATE, speak } from '../lib/audio';
 import { supabase } from '../lib/supabase';
 import type { AvatarStyle, Profile } from '../lib/store';
@@ -16,10 +18,23 @@ export function Settings() {
   const { data, update, email, signOut } = useApp();
   const p = data.profile;
   const set = (patch: Partial<Profile>) => update('profile', (x) => ({ ...x, ...patch }));
+  const [micTest, setMicTest] = useState(false);
 
   return (
     <div className="screen">
       <h2>ตั้งค่า</h2>
+
+      <div className="card">
+        <div className="card-title">ไมโครโฟน</div>
+        {micTest ? (
+          <MicCheck autoContinue={false} onPass={() => setMicTest(false)} onSkip={() => setMicTest(false)} />
+        ) : (
+          <>
+            <p className="small">ถ้ากดอัดแล้วไม่มีเสียง หรือ AI ไม่ได้ยิน ลองเช็คไมค์ตรงนี้ (เลือกไมค์ได้ถ้าเครื่องมีหลายตัว)</p>
+            <button className="btn" onClick={() => setMicTest(true)}>🎙️ ทดสอบไมค์</button>
+          </>
+        )}
+      </div>
 
       <div className="card">
         <div className="card-title">หน้าตาตัวละคร</div>

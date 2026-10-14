@@ -41,11 +41,41 @@ export type Mic = {
   level(): number;
 };
 
+// Which microphone to use. A PC often has several (webcam, headset, "Default" that points at
+// an unplugged one): Jam/Boss picks once in the mic check and every recording uses it.
+const MIC_KEY = 'jed:micId';
+export function preferredMic(): string {
+  try {
+    return localStorage.getItem(MIC_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+export function setPreferredMic(id: string) {
+  try {
+    if (id) localStorage.setItem(MIC_KEY, id);
+    else localStorage.removeItem(MIC_KEY);
+  } catch {
+    /* private mode */
+  }
+}
+function micConstraints(extra: MediaTrackConstraints = {}): MediaStreamConstraints {
+  const id = preferredMic();
+  // `ideal`, not `exact`: a remembered headset that is unplugged today must not break the app.
+  return { audio: { echoCancellation: true, noiseSuppression: true, ...(id ? { deviceId: { ideal: id } } : {}), ...extra } };
+}
+/** Microphones with names (names only appear after permission was granted once). */
+export async function listMics(): Promise<{ id: string; label: string }[]> {
+  const devs = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+  return devs.filter((d) => d.kind === 'audioinput').map((d, i) => ({ id: d.deviceId, label: d.label || `ไมค์ ${i + 1}` }));
+}
+
+/** 0..1 meter value from RMS, on a dB scale so quiet speech still shows (-60 dB → 0, 0 dB → 1). */
+export const meterFromRms = (rms: number) => (rms <= 0 ? 0 : Math.max(0, Math.min(1, (20 * Math.log10(rms) + 60) / 60)));
+
 export async function startMic(onChunk: (pcm: Int16Array) => void): Promise<Mic> {
   const ac = await audioCtx();
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
-  });
+  const stream = await navigator.mediaDevices.getUserMedia(micConstraints({ autoGainControl: true, channelCount: 1 }));
   // Register once; a real load failure (404/CSP) must surface, not masquerade as a mic error.
   worklet ??= ac.audioWorklet.addModule('/pcm-worklet.js').catch((e) => {
     worklet = null;
@@ -61,7 +91,7 @@ export async function startMic(onChunk: (pcm: Int16Array) => void): Promise<Mic>
   const node = new AudioWorkletNode(ac, 'pcm-recorder');
   let lvl = 0;
   node.port.onmessage = (e) => {
-    lvl = Math.min(1, e.data.rms * 6);
+    lvl = meterFromRms(e.data.rms);
     onChunk(new Int16Array(e.data.pcm));
   };
   src.connect(node);
@@ -219,23 +249,19 @@ export const stopSpeaking = () => {
   speakingLevel = 0;
 };
 
-// ---------- Simple recorder for shadowing / snapshots ----------
-export async function recordClip(): Promise<{
-  stop: () => Promise<Blob>;
+// ---------- Mic meter (mic check) and simple recorder (shadowing / snapshots) ----------
+export type MicMeter = {
   stream: MediaStream;
   /** Current mic loudness 0..1 (for a live meter). */
   level: () => number;
   /** Loudest level heard so far: near 0 means the mic picked up nothing. */
   peak: () => number;
-}> {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-  const type = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find((t) => MediaRecorder.isTypeSupported(t));
-  const rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
-  const parts: Blob[] = [];
-  const blob = () => new Blob(parts, { type: rec.mimeType || type || 'audio/webm' });
-  rec.ondataavailable = (e) => e.data.size && parts.push(e.data);
+  stop: () => void;
+};
 
-  // Level meter: lets Jam see the mic is hearing her, and lets us warn on a silent take.
+/** Opens the mic and measures loudness only (no recording). Caller must stop() it. */
+export async function micMeter(): Promise<MicMeter> {
+  const stream = await navigator.mediaDevices.getUserMedia(micConstraints());
   let maxLevel = 0;
   let ctx: AudioContext | null = null;
   let analyser: AnalyserNode | null = null;
@@ -255,25 +281,51 @@ export async function recordClip(): Promise<{
     analyser.getByteTimeDomainData(buf);
     let sum = 0;
     for (const v of buf) sum += ((v - 128) / 128) ** 2;
-    const l = Math.min(1, Math.sqrt(sum / buf.length) * 4);
+    const l = meterFromRms(Math.sqrt(sum / buf.length));
     maxLevel = Math.max(maxLevel, l);
     return l;
   };
+  return {
+    stream,
+    level,
+    peak: () => (analyser ? maxLevel : 1),
+    stop: () => {
+      stream.getTracks().forEach((t) => t.stop());
+      void ctx?.close().catch(() => undefined);
+    },
+  };
+}
+
+/** Below this peak (about -42 dB) the take is treated as silence: wrong mic, muted, or far away. */
+export const SILENT_PEAK = 0.3;
+
+export async function recordClip(): Promise<{
+  stop: () => Promise<Blob>;
+  stream: MediaStream;
+  level: () => number;
+  peak: () => number;
+}> {
+  const meter = await micMeter();
+  const { stream } = meter;
+  const type = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find((t) => MediaRecorder.isTypeSupported(t));
+  const rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+  const parts: Blob[] = [];
+  const blob = () => new Blob(parts, { type: rec.mimeType || type || 'audio/webm' });
+  rec.ondataavailable = (e) => e.data.size && parts.push(e.data);
 
   // Listen from the start: if the mic dies mid-recording (iOS lock, phone call) the
   // recorder stops on its own, and a later stop() must still resolve with what we have.
   const stopped = new Promise<Blob>((resolve) => {
     rec.onstop = () => {
-      stream.getTracks().forEach((t) => t.stop());
-      void ctx?.close().catch(() => undefined);
+      meter.stop();
       resolve(blob());
     };
   });
   rec.start(250);
   return {
     stream,
-    level,
-    peak: () => (analyser ? maxLevel : 1),
+    level: meter.level,
+    peak: meter.peak,
     stop: () => {
       if (rec.state !== 'inactive') {
         try {
