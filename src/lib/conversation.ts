@@ -23,6 +23,9 @@ const KICKOFF = '(System: Jam has just joined the call. Do not reply to this not
 const CONNECT_TIMEOUT_MS = 10_000;
 const MAX_UTTER_CHUNKS = 150; // 15 s of 100 ms chunks — keeps fallback uploads small
 const BARGE_IN_RMS = 0.05; // speech close to the phone is ~0.05–0.3; leaked speaker echo is usually far below
+// The partner always speaks first. Until it does, Live must not hear the room: continuous sound
+// (TV, chatter, Jam already talking) holds Live's turn open and the greeting never comes.
+const OPENING_GATE_MS = 8_000;
 function rms(pcm: Int16Array): number {
   let sum = 0;
   for (let i = 0; i < pcm.length; i++) sum += (pcm[i] / 0x8000) ** 2;
@@ -52,6 +55,7 @@ export class Conversation {
   private ended = false;
   private state: ConvState = 'connecting';
   private pendingCue = '';
+  private openingUntil = 0; // mic sends silence until the partner starts talking, or this time
   // turn-mode VAD
   private utter: Int16Array[] = [];
   private loudRun = 0;
@@ -155,6 +159,7 @@ export class Conversation {
     this.mode = 'live';
     if (recap) this.setState('listening');
     else {
+      this.openingUntil = Date.now() + OPENING_GATE_MS;
       this.session.sendRealtimeInput({ text: KICKOFF });
       this.setState('thinking');
     }
@@ -164,6 +169,7 @@ export class Conversation {
     if (this.ended) return;
     const sc = m.serverContent;
     if (!sc) return;
+    if (sc.outputTranscription?.text || sc.modelTurn?.parts?.length) this.openingUntil = 0; // the partner has started
     if (sc.interrupted) {
       this.player?.clear();
       this.flushAi(); // what was said before Jam cut in stays before her words
@@ -292,7 +298,8 @@ export class Conversation {
       // Jimmy and cut him off every few words. While he talks, only clearly-spoken input (Jam
       // really cutting in) goes through; quieter sound is sent as silence to keep the stream steady.
       let out = pcm;
-      if (this.player?.playing && rms(pcm) < BARGE_IN_RMS) out = new Int16Array(pcm.length);
+      if (Date.now() < this.openingUntil) out = new Int16Array(pcm.length);
+      else if (this.player?.playing && rms(pcm) < BARGE_IN_RMS) out = new Int16Array(pcm.length);
       this.session?.sendRealtimeInput({
         audio: { data: b64FromBytes(new Uint8Array(out.buffer)), mimeType: 'audio/pcm;rate=16000' },
       });

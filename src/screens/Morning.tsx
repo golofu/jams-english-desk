@@ -109,10 +109,9 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
         situationTh={`คุยเล่นกับ ${prof.coachName} เรื่อง "${plan.topic.th}" ตอบสั้นๆ ก็ได้ ไม่ต้องกลัวผิด`}
         system={jimmyChatPrompt({ coachName: prof.coachName, speed: prof.speed, topic: plan.topic.en, memory: memoryWithAge(prof.memory, prof.memoryDate), level: prof.level })}
         seconds={300}
-        // Shy or offline in the chat: she can still go on to the role-play.
-        onCancel={() => {
-          setStep(busy ? 'done' : 'roleplay');
-        }}
+        // Shy or offline in the chat: she can still go on to the role-play. On a busy day the chat
+        // is the whole session, so nothing was practised: back home, no "well done" screen.
+        onCancel={() => (busy ? onExit() : setStep('roleplay'))}
         onDone={(r) => {
           logChat(Math.max(1, Math.round(r.seconds / 60)));
           setStep(busy ? 'done' : 'roleplay');
