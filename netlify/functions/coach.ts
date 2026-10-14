@@ -14,7 +14,7 @@ import { GROQ_MODELS, groqJson, hasGroq, transcribe } from './_shared/groq.js';
 type Audio = { data: string; mimeType: string };
 type Line = { who: 'jam' | 'ai'; text: string };
 
-const LEARNER = `The learner is Jam, a Thai executive secretary to the CEO of GoDigit. Her English is beginner level (about A1-A2) and she lacks confidence. Use short, simple, natural, polite workplace English. Thai must be natural everyday Thai.`;
+const LEARNER = `The learner is Jam, a Thai executive secretary to the CEO of GoDigit. Her English is beginner level (about A1-A2) and she lacks confidence. Use short, simple, polite professional business English she can use at work (meetings, guests, clients, phone, email). Thai must be natural everyday Thai.`;
 
 const PRIVACY = `Never ask for or repeat real names of real clients, phone numbers or confidential business details; use generic placeholders.`;
 
@@ -158,7 +158,7 @@ const actions: Record<string, (b: Body, audio?: Audio) => Promise<unknown>> = {
       `${LEARNER}
 Jam is in the middle of an English role-play and got stuck. She expressed what she wants to say in Thai (${audio ? 'see the attached audio' : `text: "${cap(b.text, 400)}"`}).
 Conversation context: ${cap(b.context, 1500) || 'general workplace conversation'}.
-Give ONE short English sentence (max 14 words) she can say right now, its Thai meaning, sayIt = how to pronounce the ENGLISH sentence, written in Thai letters (e.g. "Would you like coffee?" → "วูด ยู ไลค์ คอฟฟี่"), and heard = what you understood she said (Thai).`,
+Give ONE short, polite business English sentence (max 14 words) she can say right now, its Thai meaning, sayIt = how to pronounce the ENGLISH sentence, written in Thai letters (e.g. "Would you like coffee?" → "วูด ยู ไลค์ คอฟฟี่"), and heard = what you understood she said (Thai).`,
       {
         type: 'object',
         properties: { en: str, th: str, sayIt: str, heard: str },
@@ -198,8 +198,8 @@ Give 1-3 stars for each, using these anchors:
 - fluency: 3 = full sentences, ≤1 help press; 2 = short sentences or 2-3 help presses; 1 = mostly single words or 4+ help presses.
 If she spoke fewer than 2 times, give 1 star each, and make noteTh/noteEn gently encourage her to answer more next time (do not praise the result).
 good: up to 3 things she said well (quote her words, Thai praise).
-better: up to 3 of her sentences rewritten more naturally (said = her words, better = improved, th = Thai meaning, why = short Thai reason).
-words: 5 useful words/phrases from this scenario with Thai meaning.
+better: up to 3 of her sentences rewritten as natural, polite business English (said = her words, better = improved, th = Thai meaning, why = short Thai reason).
+words: 5 useful business words/phrases from this scenario with Thai meaning.
 noteTh: 1-2 warm sentences from you (the coach, a man: end with ครับ, never ค่ะ) in Thai. noteEn: one short simple English sentence from you.
 memory: one English sentence summarizing what she practiced and what to work on next (you will read this tomorrow).`,
       {
