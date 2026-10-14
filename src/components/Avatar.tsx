@@ -1,9 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { Character } from '../data/characters';
 import type { AvatarStyle } from '../lib/store';
-import jimmyBase from '../assets/avatars/jimmy-pixar-base.jpg';
-import jimmyTalk from '../assets/avatars/jimmy-pixar-talk.jpg';
-import jimmyBlink from '../assets/avatars/jimmy-pixar-blink.jpg';
 
 type Props = {
   character: Character;
@@ -16,10 +13,16 @@ type Props = {
   label?: string;
 };
 
+// Painted portraits: src/assets/avatars/<character>-<style>-<base|talk|blink>.jpg (any missing set falls back to the drawn face).
 type Portrait = { base: string; talk: string; blink: string };
-const PORTRAITS: Partial<Record<Character['id'], Partial<Record<AvatarStyle, Portrait>>>> = {
-  jimmy: { pixar: { base: jimmyBase, talk: jimmyTalk, blink: jimmyBlink } },
-};
+const FRAMES = import.meta.glob<string>('../assets/avatars/*.jpg', { eager: true, import: 'default' });
+const PORTRAITS: Record<string, Partial<Record<string, Portrait>>> = {};
+for (const [path, url] of Object.entries(FRAMES)) {
+  const m = path.match(/\/(\w+)-(\w+)-(base|talk|blink)\.jpg$/);
+  if (!m) continue;
+  const [, who, look, frame] = m;
+  ((PORTRAITS[who] ??= {})[look] ??= { base: '', talk: '', blink: '' })[frame as keyof Portrait] = url;
+}
 
 // Per-style proportions: same character, three looks.
 const STYLE = {
@@ -84,7 +87,7 @@ export function Avatar({ character, style, level, state = 'idle', size = 260, la
 
   // Painted portrait (3 frames: rest / talking / blink) where one exists; the drawn face otherwise.
   const portrait = PORTRAITS[character.id]?.[style];
-  if (portrait)
+  if (portrait?.base && portrait.talk && portrait.blink)
     return (
       <svg viewBox="0 0 200 230" width={size} height={size * 1.15} role="img" aria-label={label ?? character.name} className="avatar-svg">
         <defs>
