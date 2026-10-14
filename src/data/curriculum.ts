@@ -270,7 +270,7 @@ export const JIMMY_TOPICS: { en: string; th: string; monday?: boolean }[] = [
   { en: "How do you prepare the room before an important meeting?", th: 'เตรียมห้องก่อนประชุมสำคัญยังไง' },
   { en: "How do you welcome a guest who visits the CEO?", th: 'ต้อนรับแขกที่มาพบ CEO ยังไง' },
   { en: "How do you answer an important phone call for the CEO?", th: 'รับสายสำคัญแทน CEO ยังไง' },
-  { en: "Tell me about a client meeting this week (use a made-up name).", th: 'เล่าเรื่องการประชุมกับลูกค้าสัปดาห์นี้ (ใช้ชื่อสมมติ)' },
+  { en: 'How do you get ready when a client comes to meet the CEO?', th: 'เตรียมตัวยังไงเมื่อลูกค้ามาพบ CEO' },
   { en: "What is the most difficult part of your job, and how do you handle it?", th: 'งานส่วนไหนยากที่สุด และรับมือยังไง' },
   { en: "What is on the CEO's calendar this week?", th: 'สัปดาห์นี้ CEO มีนัดอะไรบ้าง', monday: true },
   { en: "How do you write a short email to reschedule a meeting?", th: 'เขียนอีเมลสั้นๆ ขอเลื่อนนัดยังไง' },
