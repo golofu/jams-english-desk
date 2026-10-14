@@ -220,24 +220,60 @@ export const stopSpeaking = () => {
 };
 
 // ---------- Simple recorder for shadowing / snapshots ----------
-export async function recordClip(): Promise<{ stop: () => Promise<Blob>; stream: MediaStream }> {
+export async function recordClip(): Promise<{
+  stop: () => Promise<Blob>;
+  stream: MediaStream;
+  /** Current mic loudness 0..1 (for a live meter). */
+  level: () => number;
+  /** Loudest level heard so far: near 0 means the mic picked up nothing. */
+  peak: () => number;
+}> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
   const type = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find((t) => MediaRecorder.isTypeSupported(t));
   const rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
   const parts: Blob[] = [];
   const blob = () => new Blob(parts, { type: rec.mimeType || type || 'audio/webm' });
   rec.ondataavailable = (e) => e.data.size && parts.push(e.data);
+
+  // Level meter: lets Jam see the mic is hearing her, and lets us warn on a silent take.
+  let maxLevel = 0;
+  let ctx: AudioContext | null = null;
+  let analyser: AnalyserNode | null = null;
+  try {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    ctx = new Ctx();
+    void ctx.resume();
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    ctx.createMediaStreamSource(stream).connect(analyser);
+  } catch {
+    analyser = null; // meter is a nicety; recording still works without it
+  }
+  const buf = new Uint8Array(512);
+  const level = () => {
+    if (!analyser) return 0;
+    analyser.getByteTimeDomainData(buf);
+    let sum = 0;
+    for (const v of buf) sum += ((v - 128) / 128) ** 2;
+    const l = Math.min(1, Math.sqrt(sum / buf.length) * 4);
+    maxLevel = Math.max(maxLevel, l);
+    return l;
+  };
+
   // Listen from the start: if the mic dies mid-recording (iOS lock, phone call) the
   // recorder stops on its own, and a later stop() must still resolve with what we have.
   const stopped = new Promise<Blob>((resolve) => {
     rec.onstop = () => {
       stream.getTracks().forEach((t) => t.stop());
+      void ctx?.close().catch(() => undefined);
       resolve(blob());
     };
   });
   rec.start(250);
   return {
     stream,
+    level,
+    peak: () => (analyser ? maxLevel : 1),
     stop: () => {
       if (rec.state !== 'inactive') {
         try {
