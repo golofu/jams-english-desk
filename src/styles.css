@@ -261,6 +261,13 @@ textarea:focus, input:focus { outline: 2px solid color-mix(in srgb, var(--brand)
 .login h1 { font-size: 1.6rem; }
 .onboard .card p { margin: 0.4em 0; }
 
+.usage-card { background: var(--card); border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--shadow); margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
+.usage-title { font-weight: 800; }
+.usage-row { display: flex; justify-content: space-between; gap: 10px; font-size: 0.92rem; }
+.usage-row b { text-align: right; }
+.usage-row b.ok { color: var(--ok); }
+.usage-row b.warn { color: var(--accent-end); }
+.usage-note { font-size: 0.78rem; color: var(--muted); }
 .privacy-note { font-size: 0.82rem; color: var(--muted); text-align: center; margin: 4px 8px 0; }
 .live-caption { opacity: 0.85; }
 .call-head { flex: 1; min-width: 0; }

@@ -1,4 +1,5 @@
 import type { LiveServerMessage, Session } from '@google/genai';
+import { markVoiceQuota } from './usage';
 import { api, ApiError, coach } from './api';
 import { PcmPlayer, audioCtx, b64FromBytes, browserSpeechLevel, speak, startMic, stopSpeaking, wavFromPcm16, type Mic } from './audio';
 
@@ -117,6 +118,7 @@ export class Conversation {
         onmessage: (m) => this.onLiveMessage(m),
         onerror: (e) => console.warn('live error', e),
         onclose: (e) => {
+          if (/quota|exhaust/i.test(e.reason || '')) markVoiceQuota();
           if (!ready) return failEarly(new Error(`LIVE_CLOSED ${e.code} ${e.reason}`));
           this.session = null;
           if (this.ended) return;

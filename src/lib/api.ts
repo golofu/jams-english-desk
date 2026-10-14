@@ -52,6 +52,9 @@ function readPass(): string {
     return '';
   }
 }
+/** True when a call can go out without popping the passcode prompt (for background checks). */
+export const canCallQuietly = () => !!supabase || !!readPass();
+
 function askPass(wrong: boolean): Promise<string | null> {
   // One prompt even when subtitles + review ask at the same moment.
   asking ??= Promise.resolve().then(() => {

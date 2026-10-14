@@ -65,3 +65,33 @@ export async function groqJson(model: string, prompt: string, schema: object, si
   if (!text) throw new SyntaxError('EMPTY');
   return JSON.parse(text);
 }
+
+export type GroqQuota = { model: string; limit: number; remaining: number };
+let quotaCache: { at: number; list: GroqQuota[] } | null = null;
+
+/**
+ * Requests left today per text model, read from Groq's own headers
+ * (x-ratelimit-*-requests = requests per day). Costs one tiny request per model,
+ * so results are reused for a minute.
+ */
+export async function groqQuota(signal: AbortSignal): Promise<GroqQuota[]> {
+  if (quotaCache && Date.now() - quotaCache.at < 60_000) return quotaCache.list;
+  const list = await Promise.all(
+    GROQ_MODELS.map(async (model): Promise<GroqQuota> => {
+      const res = await fetch(`${BASE}/chat/completions`, {
+        method: 'POST',
+        signal,
+        headers: { authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ model, messages: [{ role: 'user', content: 'ok' }], max_completion_tokens: 16 }),
+      });
+      await res.text().catch(() => '');
+      const limit = Number(res.headers.get('x-ratelimit-limit-requests')) || 0;
+      const left = res.headers.get('x-ratelimit-remaining-requests');
+      // A daily-limit 429 may carry no headers: that model is simply out for today.
+      const remaining = left !== null ? Number(left) || 0 : res.status === 429 ? 0 : limit;
+      return { model, limit, remaining };
+    }),
+  );
+  quotaCache = { at: Date.now(), list };
+  return list;
+}

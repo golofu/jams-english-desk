@@ -1,6 +1,7 @@
 import { CHARACTERS } from '../data/characters';
 import { LEVELS, SCENARIOS } from '../data/curriculum';
 import { Avatar } from '../components/Avatar';
+import { UsageCard } from '../components/UsageCard';
 import { dayStr, levelStatus, streak } from '../lib/store';
 import { useApp } from '../state';
 
@@ -98,6 +99,7 @@ export function Home({ go }: { go: Go }) {
         </div>
         <div className="tc-go">›</div>
       </button>
+      <UsageCard />
       <p className="privacy-note">⚠️ AI ฟรีอาจนำบทสนทนาไปใช้พัฒนา อย่าพูดหรือพิมพ์ข้อมูลจริงหรือข้อมูลลับของลูกค้าและบริษัท</p>
     </div>
   );

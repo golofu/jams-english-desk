@@ -1,6 +1,6 @@
 import { ThinkingLevel } from '@google/genai';
 import { LITE_MODEL, TEXT_MODEL, HttpError, gemini, handle, json, requireUser, statusOf } from './_shared/common.js';
-import { GROQ_MODELS, groqJson, hasGroq, transcribe } from './_shared/groq.js';
+import { GROQ_MODELS, groqJson, groqQuota, hasGroq, transcribe } from './_shared/groq.js';
 
 /**
  * Text-model helpers. One endpoint, `action` picks the job:
@@ -9,6 +9,7 @@ import { GROQ_MODELS, groqJson, hasGroq, transcribe } from './_shared/groq.js';
  *  evaluate  – role-play transcript -> stars + review cards
  *  prep      – "ซ้อมก่อนเจอจริง": Thai description of tomorrow -> custom scenario
  *  turn      – fallback conversation when the Live quota is out: audio in, text reply out
+ *  usage     – free text-AI requests left today (Groq), for the home screen
  */
 
 type Audio = { data: string; mimeType: string };
@@ -153,6 +154,16 @@ const phrase = { type: 'object', properties: { en: str, th: str }, required: ['e
 
 type Body = Record<string, any>;
 const actions: Record<string, (b: Body, audio?: Audio) => Promise<unknown>> = {
+  async usage() {
+    if (!hasGroq()) return { text: null };
+    const list = await groqQuota(AbortSignal.timeout(10_000));
+    const known = list.filter((q) => q.limit > 0);
+    return {
+      text: known.length
+        ? { remaining: known.reduce((n, q) => n + q.remaining, 0), limit: known.reduce((n, q) => n + q.limit, 0) }
+        : null,
+    };
+  },
   async help(b, audio) {
     return generate(
       `${LEARNER}
