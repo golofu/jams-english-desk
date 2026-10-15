@@ -33,7 +33,8 @@ export function Morning({ onExit, onMore, scenarioId, extra }: { onExit: () => v
   const [call, setCall] = useState<CallResult | null>(null);
 
   const plan = useMemo(() => {
-    const scenario = SCENARIOS.find((s) => s.id === scenarioId) ?? nextScenario(data.sessions, prof.level);
+    // Never undefined here: Review only levels up into a level that is available (has scenes).
+    const scenario = (SCENARIOS.find((s) => s.id === scenarioId) ?? nextScenario(data.sessions, prof.level))!;
     // Mixed cast: rotate partners per visit of this scene (a day-based index froze on weekdays).
     const charId = scenario.characters[scenarioVisits(data.sessions, scenario.id) % scenario.characters.length];
     const today = localDayIndex();

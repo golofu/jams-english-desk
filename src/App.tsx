@@ -14,7 +14,7 @@ import { Login } from './screens/Login';
 import { Onboarding } from './screens/Onboarding';
 
 type Tab = 'home' | 'phrases' | 'progress' | 'settings';
-type Flow = 'morning' | 'more' | 'night' | 'prep' | null;
+type Flow = 'morning' | 'night' | 'prep' | null;
 
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -43,11 +43,14 @@ function Shell() {
   const { data } = useApp();
   const [tab, setTab] = useState<Tab>('home');
   const [flow, setFlow] = useState<Flow>(null);
-  const [lessonRun, setLessonRun] = useState(0); // bumps per extra lesson: a fresh Morning picks the next scene
+  // 0 = the day's Morning Talk; each extra lesson bumps it, so a fresh Morning picks the next scene.
+  // Extra lessons stay on flow 'morning': changing flow re-runs the history effect below, whose
+  // async history.back() would land after the new pushState and pop the "leave practice?" confirm.
+  const [lessonRun, setLessonRun] = useState(0);
 
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [tab, flow]);
+  }, [tab, flow, lessonRun]);
 
   // Android back gesture / browser back: leave the current practice instead of closing the app.
   useEffect(() => {
@@ -69,13 +72,16 @@ function Shell() {
 
   if (!data.profile.onboarded) return <Onboarding />;
 
-  const exit = () => setFlow(null);
+  const exit = () => {
+    setFlow(null);
+    setLessonRun(0);
+  };
   const more = () => {
     setLessonRun((n) => n + 1);
-    setFlow('more');
+    setFlow('morning');
   };
-  if (flow === 'morning') return <Morning onExit={exit} onMore={more} />;
-  if (flow === 'more') return <Morning key={lessonRun} extra onExit={exit} onMore={more} />;
+  const go = (r: 'morning' | 'more' | 'night' | 'prep') => (r === 'more' ? more() : setFlow(r));
+  if (flow === 'morning') return <Morning key={lessonRun} extra={lessonRun > 0} onExit={exit} onMore={more} />;
   if (flow === 'night') return <Night onExit={exit} />;
   if (flow === 'prep') return <Prep onExit={exit} />;
 
@@ -86,7 +92,7 @@ function Shell() {
         <span className="app-name">English Desk</span>
       </header>
       <main>
-        {tab === 'home' && <Home go={setFlow} />}
+        {tab === 'home' && <Home go={go} />}
         {tab === 'phrases' && <Phrases />}
         {tab === 'progress' && <Progress />}
         {tab === 'settings' && <Settings />}

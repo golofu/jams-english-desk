@@ -5,8 +5,8 @@ import { passedStars, type SessionLog } from './store';
 export const scenarioVisits = (sessions: SessionLog[], id: string) =>
   sessions.filter((s) => s.kind === 'morning' && s.scenarioId === id).length;
 
-/** Next scene of the level: not yet passed first, then least practised, in curriculum order. */
-export function nextScenario(sessions: SessionLog[], level: number): Scenario {
+/** Next scene of the level: not yet passed first, then least practised, in curriculum order. Undefined for a level with no scenes yet. */
+export function nextScenario(sessions: SessionLog[], level: number): Scenario | undefined {
   const pool = SCENARIOS.filter((s) => s.level === level);
   const passedIds = new Set(sessions.filter((s) => s.kind === 'morning' && passedStars(s.stars)).map((s) => s.scenarioId));
   return [...pool].sort(

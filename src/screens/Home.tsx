@@ -52,7 +52,7 @@ export function Home({ go }: { go: Go }) {
   );
 
   // No daily cap: once the morning is done, the next lesson is always one tap away.
-  const more = didMorning && (
+  const more = didMorning && next && (
     <button key="x" className="task-card more" onClick={() => go('more')}>
       <div className="tc-icon">➕</div>
       <div className="tc-body">
