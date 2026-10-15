@@ -109,6 +109,7 @@ textarea:focus, input:focus { outline: 2px solid color-mix(in srgb, var(--brand)
 }
 .task-card.night { border-left-color: #6366f1; }
 .task-card.prep { border-left-color: var(--brand); }
+.task-card.more { border-left-color: var(--ok); }
 .task-card.done { opacity: 0.7; }
 .task-card.static { cursor: default; }
 .tc-icon { font-size: 1.8rem; }

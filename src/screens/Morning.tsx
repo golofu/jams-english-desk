@@ -7,7 +7,8 @@ import { MicCheck } from '../components/MicCheck';
 import { Avatar } from '../components/Avatar';
 import { jimmyChatPrompt, rolePlayPrompt } from '../lib/prompts';
 import { unlockSpeech } from '../lib/audio';
-import { dayStr, localDayIndex, passedStars, uid } from '../lib/store';
+import { dayStr, localDayIndex, uid } from '../lib/store';
+import { nextScenario, rolePlaysOn, scenarioVisits } from '../lib/plan';
 import { useApp } from '../state';
 
 /** "… (3 days ago)" unless it really was the last practice day. */
@@ -19,8 +20,12 @@ function memoryWithAge(memory: string, date?: string): string {
 
 type Step = 'start' | 'miccheck' | 'chat' | 'roleplay' | 'review' | 'done';
 
-/** Morning Talk: mic check → chat with Jimmy → role-play → review (≈17 min). It's a speaking app: talk to the AI from the first minute. */
-export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId?: string }) {
+/**
+ * Morning Talk: mic check → chat with Jimmy → role-play → review (≈17 min). It's a speaking app: talk to the AI from the first minute.
+ * `extra`: one more lesson after the first, any time of day — straight to the role-play, no second coach chat.
+ * Jam sets her own pace (3 lessons today, 1 tomorrow); `onMore` starts the next one from the done screen.
+ */
+export function Morning({ onExit, onMore, scenarioId, extra }: { onExit: () => void; onMore?: () => void; scenarioId?: string; extra?: boolean }) {
   const { data, update } = useApp();
   const prof = data.profile;
   const [step, setStep] = useState<Step>('start');
@@ -28,17 +33,9 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
   const [call, setCall] = useState<CallResult | null>(null);
 
   const plan = useMemo(() => {
-    const pool = SCENARIOS.filter((s) => s.level === prof.level);
-    // Visits = role-plays actually held (stars or not), so a failed AI review never
-    // freezes the rotation on the same scene.
-    const visits = (id: string) => data.sessions.filter((s) => s.kind === 'morning' && s.scenarioId === id).length;
-    const passedIds = new Set(data.sessions.filter((s) => s.kind === 'morning' && passedStars(s.stars)).map((s) => s.scenarioId));
-    // Next scene: not yet passed first, then least practised, in curriculum order.
-    const scenario =
-      SCENARIOS.find((s) => s.id === scenarioId) ??
-      [...pool].sort((a, b) => Number(passedIds.has(a.id)) - Number(passedIds.has(b.id)) || visits(a.id) - visits(b.id))[0];
+    const scenario = SCENARIOS.find((s) => s.id === scenarioId) ?? nextScenario(data.sessions, prof.level);
     // Mixed cast: rotate partners per visit of this scene (a day-based index froze on weekdays).
-    const charId = scenario.characters[visits(scenario.id) % scenario.characters.length];
+    const charId = scenario.characters[scenarioVisits(data.sessions, scenario.id) % scenario.characters.length];
     const today = localDayIndex();
     const isMonday = new Date(`${dayStr()}T12:00:00`).getDay() === 1;
     // Monday always opens with the weekend topic; other days rotate through the rest.
@@ -46,7 +43,7 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
     const topic = (isMonday && JIMMY_TOPICS.find((t) => t.monday)) || topics[today % topics.length];
     return { scenario, character: CHARACTERS[charId], topic };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prof.level, scenarioId]);
+  }, [prof.level, scenarioId]); // fixed for this visit; the next lesson is a fresh mount (keyed in App)
 
   const jimmy = CHARACTERS.jimmy;
   const level = LEVELS[prof.level - 1];
@@ -59,6 +56,28 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
     update('sessions', (s) => [{ id: uid(), date: startDay, kind: 'morning', level: prof.level, minutes, createdAt: Date.now() }, ...s]);
   }
   const [startDay] = useState(() => dayStr()); // a session that runs past midnight stays on the day it began
+
+  if (step === 'start' && extra)
+    return (
+      <div className="screen morning">
+        <button className="link back" onClick={onExit}>‹ กลับ</button>
+        <div className="kicker">➕ ฝึกบทต่อไป · ระดับ {prof.level} {level.nameEn}</div>
+        <h2>อีกบทนะ แจม!</h2>
+        <div className="plan">
+          <PlanRow n="1" t={`Role-play: ${plan.scenario.titleTh} กับ ${plan.character.name}`} m="8 นาที" />
+          <PlanRow n="2" t="ดูผล + เก็บประโยค" m="4 นาที" />
+        </div>
+        <button
+          className="btn primary big"
+          onClick={() => {
+            unlockSpeech(); // iOS: allow later speech after this tap
+            setStep('miccheck');
+          }}
+        >
+          เริ่มเลย
+        </button>
+      </div>
+    );
 
   if (step === 'start')
     return (
@@ -92,7 +111,7 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
     return (
       <div className="screen">
         <button className="link back" onClick={onExit}>‹ กลับ</button>
-        <MicCheck onPass={() => setStep('chat')} onSkip={() => setStep('chat')} />
+        <MicCheck onPass={() => setStep(extra ? 'roleplay' : 'chat')} onSkip={() => setStep(extra ? 'roleplay' : 'chat')} />
       </div>
     );
 
@@ -148,12 +167,19 @@ export function Morning({ onExit, scenarioId }: { onExit: () => void; scenarioId
       </div>
     );
 
+  const lessons = rolePlaysOn(data.sessions, startDay);
   return (
     <div className="screen center-col">
       <Avatar character={jimmy} style={prof.style} size={170} />
       <h2>เก่งมาก แจม! 🎉</h2>
-      <p>Morning Talk วันนี้เสร็จแล้ว คืนนี้ก่อนนอนมาฟังทบทวนอีก 10 นาทีนะ</p>
-      <button className="btn primary big" onClick={onExit}>กลับหน้าแรก</button>
+      <p>
+        {lessons > 1 ? `วันนี้ฝึกไปแล้ว ${lessons} บท` : 'Morning Talk วันนี้เสร็จแล้ว'} ยังไหวก็ไปบทต่อไปได้เลย
+        ถ้าพอแค่นี้ คืนนี้ก่อนนอนมาฟังทบทวนอีก 10 นาทีนะ
+      </p>
+      {onMore && (
+        <button className="btn primary big" onClick={onMore}>➕ ฝึกบทต่อไป</button>
+      )}
+      <button className={onMore ? 'btn' : 'btn primary big'} onClick={onExit}>พอแค่นี้ กลับหน้าแรก</button>
     </div>
   );
 }

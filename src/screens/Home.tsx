@@ -3,9 +3,10 @@ import { LEVELS, SCENARIOS } from '../data/curriculum';
 import { Avatar } from '../components/Avatar';
 import { UsageCard } from '../components/UsageCard';
 import { dayStr, levelStatus, streak } from '../lib/store';
+import { nextScenario, rolePlaysOn } from '../lib/plan';
 import { useApp } from '../state';
 
-export type Go = (r: 'morning' | 'night' | 'prep') => void;
+export type Go = (r: 'morning' | 'more' | 'night' | 'prep') => void;
 
 function greeting(h: number) {
   if (h < 11) return 'Good morning';
@@ -20,6 +21,8 @@ export function Home({ go }: { go: Go }) {
   const didMorning = data.sessions.some((s) => s.date === today && s.kind === 'morning');
   const didNight = data.sessions.some((s) => s.date === today && s.kind === 'night');
   const s = streak(data.sessions);
+  const lessonsToday = rolePlaysOn(data.sessions, today);
+  const next = nextScenario(data.sessions, prof.level);
   const level = LEVELS[prof.level - 1];
   const st = levelStatus(data.sessions, prof.level, SCENARIOS.filter((x) => x.level === prof.level).length);
   const hour = new Date().getHours();
@@ -45,6 +48,20 @@ export function Home({ go }: { go: Go }) {
         <div className="tc-sub">{prof.nightTime} · ฟัง 10 นาที ไม่ต้องพูด</div>
       </div>
       <div className="tc-go">{didNight ? '✓ เสร็จแล้ว' : 'เริ่ม ›'}</div>
+    </button>
+  );
+
+  // No daily cap: once the morning is done, the next lesson is always one tap away.
+  const more = didMorning && (
+    <button key="x" className="task-card more" onClick={() => go('more')}>
+      <div className="tc-icon">➕</div>
+      <div className="tc-body">
+        <div className="tc-title">ฝึกบทต่อไป</div>
+        <div className="tc-sub">
+          {next.titleTh} · 12 นาที{lessonsToday > 0 ? ` · วันนี้ฝึกแล้ว ${lessonsToday} บท` : ''}
+        </div>
+      </div>
+      <div className="tc-go">เริ่ม ›</div>
     </button>
   );
 
@@ -89,7 +106,7 @@ export function Home({ go }: { go: Go }) {
       </div>
 
       <h3 className="section">วันนี้</h3>
-      {nightFirst ? [night, morning] : [morning, night]}
+      {nightFirst ? [night, morning, more] : [morning, more, night]}
 
       <button className="task-card prep" onClick={() => go('prep')}>
         <div className="tc-icon">🎯</div>

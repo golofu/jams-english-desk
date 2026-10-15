@@ -14,7 +14,7 @@ import { Login } from './screens/Login';
 import { Onboarding } from './screens/Onboarding';
 
 type Tab = 'home' | 'phrases' | 'progress' | 'settings';
-type Flow = 'morning' | 'night' | 'prep' | null;
+type Flow = 'morning' | 'more' | 'night' | 'prep' | null;
 
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -43,6 +43,7 @@ function Shell() {
   const { data } = useApp();
   const [tab, setTab] = useState<Tab>('home');
   const [flow, setFlow] = useState<Flow>(null);
+  const [lessonRun, setLessonRun] = useState(0); // bumps per extra lesson: a fresh Morning picks the next scene
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -69,7 +70,12 @@ function Shell() {
   if (!data.profile.onboarded) return <Onboarding />;
 
   const exit = () => setFlow(null);
-  if (flow === 'morning') return <Morning onExit={exit} />;
+  const more = () => {
+    setLessonRun((n) => n + 1);
+    setFlow('more');
+  };
+  if (flow === 'morning') return <Morning onExit={exit} onMore={more} />;
+  if (flow === 'more') return <Morning key={lessonRun} extra onExit={exit} onMore={more} />;
   if (flow === 'night') return <Night onExit={exit} />;
   if (flow === 'prep') return <Prep onExit={exit} />;
 
