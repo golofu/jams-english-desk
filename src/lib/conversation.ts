@@ -1,4 +1,5 @@
-import type { LiveServerMessage, Session } from '@google/genai';
+import type { LiveConnectConfig, LiveServerMessage, Session } from '@google/genai';
+import { liveInputConfig, makeGate } from './echoGate';
 import { markVoiceQuota } from './usage';
 import { api, ApiError, coach } from './api';
 import { PcmPlayer, audioCtx, b64FromBytes, browserSpeechLevel, speak, startMic, stopSpeaking, wavFromPcm16, type Mic } from './audio';
@@ -23,7 +24,6 @@ type Opts = {
 const KICKOFF = '(System: Jam has just joined the call. Do not reply to this note — start the conversation yourself now, exactly as your instructions describe.)';
 const CONNECT_TIMEOUT_MS = 10_000;
 const MAX_UTTER_CHUNKS = 150; // 15 s of 100 ms chunks — keeps fallback uploads small
-const BARGE_IN_RMS = 0.05; // speech close to the phone is ~0.05–0.3; leaked speaker echo is usually far below
 // The partner always speaks first. Until it does, Live must not hear the room: continuous sound
 // (TV, chatter, Jam already talking) holds Live's turn open and the greeting never comes.
 const OPENING_GATE_MS = 8_000;
@@ -57,6 +57,7 @@ export class Conversation {
   private state: ConvState = 'connecting';
   private pendingCue = '';
   private openingUntil = 0; // mic sends silence until the partner starts talking, or this time
+  private echoGate = makeGate(); // half-duplex: Live hears silence while the partner talks
   // turn-mode VAD
   private utter: Int16Array[] = [];
   private loudRun = 0;
@@ -109,10 +110,9 @@ export class Conversation {
         responseModalities: [Modality.AUDIO],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: this.o.voice } } },
         systemInstruction: recap ? `${this.o.system}\n${recap}` : this.o.system,
-        inputAudioTranscription: {},
         outputAudioTranscription: {},
-        // Beginners pause mid-sentence; wait longer before the AI jumps in.
-        realtimeInputConfig: { automaticActivityDetection: { silenceDurationMs: 1200 } },
+        // English/Thai transcription hints + calmer speech detection (see echoGate.ts).
+        ...(liveInputConfig() as Pick<LiveConnectConfig, 'inputAudioTranscription' | 'realtimeInputConfig'>),
       },
       callbacks: {
         onmessage: (m) => this.onLiveMessage(m),
@@ -296,12 +296,10 @@ export class Conversation {
       return;
     }
     if (this.mode === 'live') {
-      // Speakerphone: some phones' echo cancellation misses WebAudio output, so Live would hear
-      // Jimmy and cut him off every few words. While he talks, only clearly-spoken input (Jam
-      // really cutting in) goes through; quieter sound is sent as silence to keep the stream steady.
+      // Speakerphone echo would make Live cut the partner off and hear him as Jam (echoGate.ts):
+      // while he talks, and just after, silence is sent to keep the stream steady.
       let out = pcm;
-      if (Date.now() < this.openingUntil) out = new Int16Array(pcm.length);
-      else if (this.player?.playing && rms(pcm) < BARGE_IN_RMS) out = new Int16Array(pcm.length);
+      if (Date.now() < this.openingUntil || !this.echoGate(!!this.player?.playing)) out = new Int16Array(pcm.length);
       this.session?.sendRealtimeInput({
         audio: { data: b64FromBytes(new Uint8Array(out.buffer)), mimeType: 'audio/pcm;rate=16000' },
       });
