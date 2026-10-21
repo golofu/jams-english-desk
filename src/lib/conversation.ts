@@ -60,6 +60,7 @@ export class Conversation {
   // Half-duplex: the mic is shut while anything plays from the speaker (the partner, or the
   // 🔊 phrase/help buttons and the backup voice, which use browser speech) and just after.
   private echoGate = makeGate(outputLatencyMs);
+  private micOpen = false; // last chunk reached the AI: only then does the screen say "พูดได้เลย"
   private speakerBusy() {
     return !!this.player?.playing || ('speechSynthesis' in window && speechSynthesis.speaking);
   }
@@ -304,8 +305,8 @@ export class Conversation {
       // Speakerphone echo would make Live cut the partner off and hear him as Jam (echoGate.ts):
       // while the speaker plays, and just after, silence is sent to keep the stream steady.
       let out = pcm;
-      const open = this.echoGate(this.speakerBusy());
-      if (Date.now() < this.openingUntil || !open) out = new Int16Array(pcm.length);
+      this.micOpen = this.echoGate(this.speakerBusy()) && Date.now() >= this.openingUntil;
+      if (!this.micOpen) out = new Int16Array(pcm.length);
       this.session?.sendRealtimeInput({
         audio: { data: b64FromBytes(new Uint8Array(out.buffer)), mimeType: 'audio/pcm;rate=16000' },
       });
@@ -313,8 +314,8 @@ export class Conversation {
     }
     if (this.state === 'connecting') return;
     // Turn mode: ignore mic while thinking/speaking, and while the speaker (or its echo) is still going.
-    const open = this.echoGate(this.speakerBusy());
-    if (this.busy || !open) return;
+    this.micOpen = this.echoGate(this.speakerBusy()) && !this.busy;
+    if (!this.micOpen) return;
     const loud = rms(pcm) > 0.02;
     this.loudRun = loud ? this.loudRun + 1 : 0;
     if (!this.voiced) {
@@ -380,15 +381,19 @@ export class Conversation {
   micLevel(): number {
     return this.mic?.level() ?? 0;
   }
-  /** Derived each frame so the avatar reacts instantly. */
+  /**
+   * Derived each frame so the avatar reacts instantly. "listening" (พูดได้เลย) only while the mic
+   * really reaches the AI: during speaker sound and its echo tail Jam would not be heard.
+   */
   liveState(): ConvState {
     if (this.ended) return 'ended';
     if (this.mode === 'live') {
       if (this.player?.playing) return 'speaking';
       if (this.state === 'connecting') return 'connecting';
-      return this.state === 'thinking' && !this.lines.length ? 'thinking' : 'listening';
+      if (this.state === 'thinking' && !this.lines.length) return 'thinking';
+      return this.micOpen || this.holding ? 'listening' : 'speaking';
     }
-    return this.state;
+    return this.state === 'listening' && !this.micOpen && !this.holding ? 'speaking' : this.state;
   }
 
   end() {

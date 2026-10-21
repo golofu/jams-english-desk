@@ -29,7 +29,7 @@ type Props = {
 const STATE_TH: Record<ConvState, string> = {
   connecting: 'กำลังเชื่อมต่อ…',
   thinking: 'กำลังคิด…',
-  speaking: 'กำลังพูด…',
+  speaking: 'กำลังพูด… ฟังให้จบก่อนนะ', // the mic is shut while the partner talks (echo guard)
   listening: 'ฟังอยู่ พูดได้เลย',
   ended: 'จบการสนทนา',
 };

@@ -7,6 +7,8 @@
 // Each run opens one Live session on the free daily voice quota — keep runs few.
 // 2026-10-21: old gate + echo ≥0.11 RMS → 4–5 cut-offs and the partner's words logged as Jam's;
 // new gate → 0 cut-offs, answer heard in full (with 2 s end-of-turn silence).
+// Garbled answer (reversed English WAV): old settings → logged as "miércoles leggi" /
+// "¿Necesitas algo más?" and the partner reacted ("It is Wednesday!"); en/th hint → English.
 import { readFileSync } from 'node:fs';
 import { GoogleGenAI, Modality } from '@google/genai';
 import { liveInputConfig, makeGate } from '../src/lib/echoGate.ts';
@@ -56,7 +58,7 @@ const session = await ai.live.connect({
     responseModalities: [Modality.AUDIO],
     speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } },
     systemInstruction:
-      'You are Jimmy, a warm English coach for Jam, a Thai secretary. Start by greeting Jam warmly by name, say one sentence about the lovely morning, then ask how she slept. Speak slowly.',
+      'You are Jimmy, a warm English coach for Jam, a Thai secretary with beginner English. Speak ONLY English, clearly. Keep every turn to 1-2 short sentences. Start by greeting Jam warmly by name, say one sentence about the lovely morning, then ask how she slept. Speak slowly.',
     ...(old
       ? { inputAudioTranscription: {}, realtimeInputConfig: { automaticActivityDetection: { silenceDurationMs: 1200 } } }
       : liveInputConfig()),
