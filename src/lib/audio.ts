@@ -18,6 +18,9 @@ export async function audioCtx(): Promise<AudioContext> {
   return ctx;
 }
 
+/** Speaker lag behind the audio clock, in ms (Bluetooth: hundreds). 0 where the browser doesn't say. */
+export const outputLatencyMs = () => (ctx?.outputLatency ?? 0) * 1000;
+
 /** Same speed setting → same speech rate on every screen. */
 export const SPEECH_RATE = { slow: 0.78, normal: 0.92, fast: 1.08 } as const;
 

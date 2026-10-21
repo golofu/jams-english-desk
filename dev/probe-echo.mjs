@@ -84,7 +84,7 @@ const session = await ai.live.connect({
           answered = true;
           answerAt = +(Math.max(now(), playEnd) + 1.5).toFixed(1);
           const off = Math.round(answerAt * RATE);
-          for (let i = 0; i < say.length && off + i < echo.length; i++) echo[off + i] += (say[i] / 0x8000) * 0.6;
+          for (let i = 0; i < say.length && off + i < echo.length; i++) echo[off + i] += (say[i] / 0x8000) * Number(process.env.JAM_GAIN || 0.6);
         }
       }
     },

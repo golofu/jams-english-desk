@@ -10,22 +10,26 @@
 /** Speaker output lag + room tail after the last scheduled sample. */
 export const ECHO_TAIL_MS = 700;
 
-/** Returns `(partnerPlaying) => send?` per mic chunk; false means send silence instead. */
-export function makeGate(now: () => number = () => Date.now()) {
-  let quietSince = 0;
+/**
+ * Returns `(soundPlaying) => send?` per mic chunk; false means send silence instead.
+ * `extraTailMs`: the speaker's own lag (AudioContext.outputLatency — large on Bluetooth).
+ */
+export function makeGate(extraTailMs: () => number = () => 0, now: () => number = () => Date.now()) {
+  let quietSince: number | null = null;
   return (playing: boolean): boolean => {
     if (playing) {
-      quietSince = 0;
+      quietSince = null;
       return false;
     }
-    if (!quietSince) quietSince = now();
-    return now() - quietSince >= ECHO_TAIL_MS;
+    quietSince ??= now();
+    return now() - quietSince >= ECHO_TAIL_MS + extraTailMs();
   };
 }
 
 /**
- * Live input settings: less trigger-happy speech detection (a cough, a chair or a TV blip must
- * not count as Jam's turn) and transcription told to expect English or Thai, not guess a language.
+ * Live input settings: transcription told to expect English or Thai, not guess a language.
+ * Start-of-speech sensitivity stays at the default: LOW clipped a soft-spoken "I slept…" to
+ * "Very well…", and default stayed quiet in steady room noise (dev/probe-echo.mjs, 2026-10-21).
  */
 export function liveInputConfig(): { inputAudioTranscription: object; realtimeInputConfig: object } {
   return {
@@ -35,8 +39,6 @@ export function liveInputConfig(): { inputAudioTranscription: object; realtimeIn
         // Beginners pause mid-sentence. The partner can't be interrupted (half-duplex), so a reply
         // that starts in a pause would mute the rest of her sentence: wait 2 s (1.2 s cut her off).
         silenceDurationMs: 2000,
-        startOfSpeechSensitivity: 'START_SENSITIVITY_LOW',
-        prefixPaddingMs: 300,
       },
     },
   };

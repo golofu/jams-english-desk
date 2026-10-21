@@ -2,7 +2,7 @@ import type { LiveConnectConfig, LiveServerMessage, Session } from '@google/gena
 import { liveInputConfig, makeGate } from './echoGate';
 import { markVoiceQuota } from './usage';
 import { api, ApiError, coach } from './api';
-import { PcmPlayer, audioCtx, b64FromBytes, browserSpeechLevel, speak, startMic, stopSpeaking, wavFromPcm16, type Mic } from './audio';
+import { PcmPlayer, audioCtx, b64FromBytes, browserSpeechLevel, outputLatencyMs, speak, startMic, stopSpeaking, wavFromPcm16, type Mic } from './audio';
 
 export type Line = { id: number; who: 'jam' | 'ai'; text: string };
 export type ConvState = 'connecting' | 'listening' | 'speaking' | 'thinking' | 'ended';
@@ -57,7 +57,12 @@ export class Conversation {
   private state: ConvState = 'connecting';
   private pendingCue = '';
   private openingUntil = 0; // mic sends silence until the partner starts talking, or this time
-  private echoGate = makeGate(); // half-duplex: Live hears silence while the partner talks
+  // Half-duplex: the mic is shut while anything plays from the speaker (the partner, or the
+  // 🔊 phrase/help buttons and the backup voice, which use browser speech) and just after.
+  private echoGate = makeGate(outputLatencyMs);
+  private speakerBusy() {
+    return !!this.player?.playing || ('speechSynthesis' in window && speechSynthesis.speaking);
+  }
   // turn-mode VAD
   private utter: Int16Array[] = [];
   private loudRun = 0;
@@ -297,17 +302,19 @@ export class Conversation {
     }
     if (this.mode === 'live') {
       // Speakerphone echo would make Live cut the partner off and hear him as Jam (echoGate.ts):
-      // while he talks, and just after, silence is sent to keep the stream steady.
+      // while the speaker plays, and just after, silence is sent to keep the stream steady.
       let out = pcm;
-      if (Date.now() < this.openingUntil || !this.echoGate(!!this.player?.playing)) out = new Int16Array(pcm.length);
+      const open = this.echoGate(this.speakerBusy());
+      if (Date.now() < this.openingUntil || !open) out = new Int16Array(pcm.length);
       this.session?.sendRealtimeInput({
         audio: { data: b64FromBytes(new Uint8Array(out.buffer)), mimeType: 'audio/pcm;rate=16000' },
       });
       return;
     }
     if (this.state === 'connecting') return;
-    // Turn mode: ignore mic while thinking/speaking (avoids hearing ourselves).
-    if (this.busy) return;
+    // Turn mode: ignore mic while thinking/speaking, and while the speaker (or its echo) is still going.
+    const open = this.echoGate(this.speakerBusy());
+    if (this.busy || !open) return;
     const loud = rms(pcm) > 0.02;
     this.loudRun = loud ? this.loudRun + 1 : 0;
     if (!this.voiced) {
