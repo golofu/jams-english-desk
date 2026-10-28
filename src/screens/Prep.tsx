@@ -77,7 +77,7 @@ export function Prep({ onExit }: { onExit: () => void }) {
         situationTh={plan.situationTh}
         keyPhrases={plan.keyPhrases}
         tasks={plan.tasks}
-        system={rolePlayPrompt({ scenario, character: plan.character, speed: prof.speed })}
+        system={rolePlayPrompt({ learner: prof, scenario, character: plan.character, speed: prof.speed })}
         seconds={420}
         onCancel={() => setStep('phrases')}
         onDone={(r) => {
@@ -120,7 +120,7 @@ export function Prep({ onExit }: { onExit: () => void }) {
     <div className="screen">
       <button className="link back" onClick={onExit}>‹ กลับ</button>
       <div className="kicker">🎯 ซ้อมก่อนเจอจริง</div>
-      <h2>พรุ่งนี้แจมจะเจออะไร?</h2>
+      <h2>พรุ่งนี้คุณจะเจออะไร?</h2>
       <p>เล่าเป็นภาษาไทยได้เลย เช่น “พรุ่งนี้ต้องโทรเลื่อนนัดลูกค้าญี่ปุ่น เพราะ CEO ติดธุระ”</p>
       <div className="warn">⚠️ อย่าใส่ชื่อจริงหรือข้อมูลลับของลูกค้า ใช้คำกลางๆ เช่น “ลูกค้าญี่ปุ่น” แทน</div>
       <textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} placeholder="พิมพ์เรื่องที่จะเจอ…" />

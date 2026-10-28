@@ -45,7 +45,7 @@ export type Mic = {
 };
 
 // Which microphone to use. A PC often has several (webcam, headset, "Default" that points at
-// an unplugged one): Jam/Boss picks once in the mic check and every recording uses it.
+// an unplugged one): whoever is practising picks once in the mic check and every recording uses it.
 const MIC_KEY = 'jed:micId';
 export function preferredMic(): string {
   try {
@@ -157,7 +157,7 @@ export class PcmPlayer {
     this.sources.add(src);
     src.onended = () => this.sources.delete(src);
   }
-  /** Barge-in: Jam started talking, drop queued audio. */
+  /** Barge-in: the learner started talking, drop queued audio. */
   clear() {
     this.sources.forEach((s) => {
       try {

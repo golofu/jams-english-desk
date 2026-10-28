@@ -87,7 +87,7 @@ export function CallView(p: Props) {
       onLine: (l) => setLines((ls) => (ls.some((x) => x.id === l.id) ? ls.map((x) => (x.id === l.id ? { ...l } : x)) : [...ls, { ...l }])),
       onPartial: setPartial,
       onState: (s) => {
-        // Mic permission + connecting time must not eat Jam's 5- or 8-minute timer.
+        // Mic permission + connecting time must not eat the learner's 5- or 8-minute timer.
         if (s !== 'connecting' && !connected.current) {
           connected.current = true;
           started.current = Date.now();

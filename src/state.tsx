@@ -1,16 +1,22 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { Session } from '@supabase/supabase-js';
-import { supabase } from './lib/supabase';
+import { fetchMe, logout, type Me } from './lib/auth';
+import { setLearner } from './lib/api';
 import { DEFAULT_DATA, loadData, mergeKey, onRemoteMerge, retrySync, saveKey, type AppData, type DataKey } from './lib/store';
 
 type Ctx = {
   data: AppData;
-  userId: string | null;
-  email: string | null;
+  me: Me;
+  userId: string;
+  email: string;
   update: <K extends DataKey>(key: K, fn: (prev: AppData[K]) => AppData[K]) => void;
   /** Latest data, including updates made earlier in the same handler. */
   get: () => AppData;
   signOut: () => Promise<void>;
+  /** Re-read the account (after a Gemini key was saved or removed). */
+  refreshMe: () => Promise<void>;
+  /** The learner chose "later" on the Gemini key screen (this visit only). */
+  keySkipped: boolean;
+  skipKey: (saved: boolean) => void;
 };
 
 const AppCtx = createContext<Ctx | null>(null);
@@ -20,9 +26,10 @@ export const useApp = () => {
   return c;
 };
 
-/** Loads data for the signed-in user (or Local mode) and persists every change. */
-export function AppProvider({ session, children }: { session: Session | null; children: ReactNode }) {
-  const userId = session?.user.id ?? null;
+/** Loads data for the signed-in user and persists every change. */
+export function AppProvider({ me, onMeChange, children }: { me: Me; onMeChange: (m: Me) => void; children: ReactNode }) {
+  const userId = me.id;
+  const [keySkipped, setKeySkipped] = useState(false);
   const [data, setData] = useState<AppData | null>(null);
   const [offlineFirstRun, setOfflineFirstRun] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -56,9 +63,8 @@ export function AppProvider({ session, children }: { session: Session | null; ch
   useEffect(() => {
     onRemoteMerge((key, value) => absorb({ [key]: value } as Partial<AppData>));
   }, [absorb]);
-  // A tab left open for hours (the iPad from last night) refreshes before Jam touches anything.
+  // A tab left open for hours (the iPad from last night) refreshes before the learner touches anything.
   useEffect(() => {
-    if (!userId) return;
     const refresh = () => {
       if (document.visibilityState !== 'visible') return;
       loadData(userId).then(({ data: d, failed }) => !failed && absorb(d)).catch(() => undefined);
@@ -91,8 +97,25 @@ export function AppProvider({ session, children }: { session: Session | null; ch
   }, []);
 
   const signOut = useCallback(async () => {
-    await supabase?.auth.signOut({ scope: 'local' }); // this device only, not Jam's other devices
+    await logout(); // this device only, not the learner's other devices
+    location.href = '/';
   }, []);
+  const refreshMe = useCallback(async () => {
+    const m = await fetchMe().catch(() => null);
+    if (m) onMeChange(m);
+  }, [onMeChange]);
+  const skipKey = useCallback(
+    (saved: boolean) => {
+      setKeySkipped(true);
+      if (saved) void refreshMe();
+    },
+    [refreshMe],
+  );
+  // The coach prompts are built from who is practising.
+  useEffect(() => {
+    const p = data?.profile;
+    if (p) setLearner({ name: p.name || me.name.split(' ')[0] || 'friend', job: p.job, company: p.company });
+  }, [data?.profile, me.name]);
 
   // Deleted phrases stay as tombstones (for syncing) but are invisible to every screen.
   const view = useMemo(() => (data ? { ...data, phrases: data.phrases.filter((p) => !p.deleted) } : null), [data]);
@@ -100,12 +123,14 @@ export function AppProvider({ session, children }: { session: Session | null; ch
   if (offlineFirstRun)
     return (
       <div className="splash center-col">
-        <p>เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ข้อมูลการฝึกของแจมอยู่บนเซิร์ฟเวอร์ ต่ออินเทอร์เน็ตแล้วกดลองใหม่นะคะ</p>
+        <p>เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ข้อมูลการฝึกของคุณอยู่บนเซิร์ฟเวอร์ ต่ออินเทอร์เน็ตแล้วกดลองใหม่นะคะ</p>
         <button className="btn primary" onClick={() => setAttempt((n) => n + 1)}>ลองใหม่</button>
       </div>
     );
   if (!view) return <div className="splash">กำลังโหลด…</div>;
   return (
-    <AppCtx.Provider value={{ data: view, userId, email: session?.user.email ?? null, update, get: () => dataRef.current, signOut }}>{children}</AppCtx.Provider>
+    <AppCtx.Provider value={{ data: view, me, userId, email: me.email, update, get: () => dataRef.current, signOut, refreshMe, keySkipped, skipKey }}>
+      {children}
+    </AppCtx.Provider>
   );
 }

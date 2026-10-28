@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { LEVELS, SCENARIOS } from '../data/curriculum';
 import { SnapshotRecorder } from '../components/SnapshotRecorder';
 import { getClip } from '../lib/idb';
-import { supabase } from '../lib/supabase';
 import { LEVEL_UP_DAYS, dayStr, levelStatus, streak, type SnapshotMeta } from '../lib/store';
 import { useApp } from '../state';
 
@@ -22,9 +21,10 @@ export function Progress() {
     const audio = new Audio();
     try {
       let blob = await getClip(snap.id);
-      if (!blob && supabase && snap.remotePath) {
-        const { data: d } = await supabase.storage.from('snapshots').download(snap.remotePath);
-        blob = d ?? undefined;
+      if (!blob && snap.remotePath) {
+        // Older rows stored "<userId>/<file>" (Supabase era); the Worker keys by file name only.
+        const r = await fetch(`/api/snapshots/${snap.remotePath.split('/').pop()}`).catch(() => null);
+        if (r?.ok) blob = await r.blob();
       }
       if (!blob) return setMsg('ไม่พบไฟล์เสียงในเครื่องนี้');
       const url = URL.createObjectURL(blob);

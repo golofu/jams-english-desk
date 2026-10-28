@@ -1,10 +1,9 @@
-import { LIVE_MODEL, gemini, handle, json, requireUser } from './_shared/common.js';
+import { LIVE_MODEL, gemini, handle, json } from './common.js';
 
 // Mints a short-lived, single-use token so the browser can open a Live API
-// WebSocket without ever seeing GEMINI_API_KEY.
-export default handle(async (req) => {
-  await requireUser(req);
-  const ai = gemini('v1alpha');
+// WebSocket without ever seeing the Gemini key.
+export default handle(async (_req, caller) => {
+  const ai = gemini(caller, 'v1alpha');
   const now = Date.now();
   const token = await ai.authTokens.create({
     config: {

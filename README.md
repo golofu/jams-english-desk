@@ -1,66 +1,38 @@
-# Jam's English Desk
+# English Desk
 
-เว็บแอปฝึกฟังและพูดภาษาอังกฤษสำหรับงานเลขา CEO ที่ GoDigit มี Jimmy เป็นโค้ช — สเปกเต็มอยู่ใน [SPEC.md](SPEC.md)
-**ค่าใช้จ่าย 0 บาท** (Gemini API ฟรี + Netlify ฟรี + Supabase ฟรี)
+แอปฝึกพูด-ฟังภาษาอังกฤษสำหรับที่ทำงาน ใช้ฟรี ใครก็ใช้ได้
+Live: https://english-desk.golfinbox.workers.dev
 
-## รันในเครื่อง (ทดสอบ)
+- Login ด้วย Google
+- ผู้ใช้ใส่ Gemini API key ฟรีของตัวเอง (Google AI Studio) หรือเป็นบัญชี sponsored ที่ใช้ key ของแอป
+- โค้ชเสียง "Jimmy" ผ่าน Gemini Live, งานข้อความผ่าน Groq (key กลางของแอป)
 
-1. ขอ **Gemini API key ฟรี** ที่ https://aistudio.google.com/apikey (ล็อกอินด้วยบัญชี Google แล้วกด Create API key)
-2. คัดลอก `.env.example` เป็น `.env.local` แล้ววาง key ในบรรทัด `GEMINI_API_KEY=`
-3. รันคำสั่ง:
-   ```bash
-   npm install
-   npm run dev
-   ```
-4. เปิด http://localhost:5174 (ถ้ายังไม่ได้ตั้งค่า Supabase จะเป็น **โหมด Local** ข้อมูลเก็บไว้ในเบราว์เซอร์)
+## Stack
 
-## ขึ้นเว็บจริงบน Vercel (ฟรี)
+- Vite + React 19 + TypeScript (`src/`)
+- Cloudflare Worker (`worker/`) ให้บริการ `/auth/*`, `/api/*`, `/health`; ไฟล์ static จาก `dist/`
+- Cloudflare D1 (`migrations/`) เก็บ users, sessions, app_state, user_keys (key ถูก AES-GCM seal)
+- Cloudflare R2 เก็บ Voice Snapshot
 
-1. Vercel → Project → Settings → Environment Variables ใส่:
-   | ชื่อ | ค่า |
-   |---|---|
-   | `GEMINI_API_KEY` | key ฟรีจาก AI Studio (เบราว์เซอร์มองไม่เห็น) |
-   | `GROQ_API_KEY` | (แนะนำ ฟรี) AI ตัวที่สองจาก https://console.groq.com/keys ใช้ได้ราว 1,000 ครั้ง/วัน/รุ่น ช่วยงานซับไทย ปุ่มนึกไม่ออก และโหมดสำรอง เมื่อ Gemini ฟรี (ราว 20 ครั้ง/วัน) หมด |
-   | `APP_PASSCODE` | รหัสเข้าแอป **ยาวอย่างน้อย 16 ตัว แบบสุ่ม** (เช่นสร้างจากตัวจัดการรหัสผ่าน) แจมใส่ครั้งเดียวต่อเครื่อง ใช้จนกว่าจะตั้ง Supabase |
-2. Deployments → Redeploy เพื่อให้ค่าใหม่มีผล
-3. ถ้าต้องการล็อกอิน Google + ซิงก์ทุกเครื่อง ทำขั้นตอน Supabase ด้านล่าง แล้วใส่ตัวแปรชุดเดียวกับ Netlify ใน Vercel
+## Dev
 
-> โค้ดฝั่งเซิร์ฟเวอร์ชุดเดียวกันใช้ได้ทั้งสองที่: `api/*.ts` (Vercel) เรียกไฟล์ใน `netlify/functions/`
+```
+npm install
+cp .env.example .dev.vars   # กรอก APP_BASE_URL, KEY_SECRET, GOOGLE_CLIENT_ID/SECRET, GROQ_API_KEY
+npm run db:migrate:local
+npm run dev                 # vite :5174 + wrangler dev :8787
+```
 
-## ขึ้นเว็บจริงบน Netlify (ฟรี)
+## Deploy
 
-1. **Supabase** (ไว้ล็อกอินด้วย Google และซิงก์ข้อมูลทุกเครื่อง)
-   - สร้างโปรเจกต์ฟรีที่ https://supabase.com → SQL Editor → วางไฟล์ [supabase/schema.sql](supabase/schema.sql) แล้วกด Run
-   - Authentication → Providers → เปิด **Google** (ต้องสร้าง OAuth Client ใน Google Cloud Console ตามที่ Supabase แนะนำ)
-   - Authentication → URL Configuration → ใส่ลิงก์เว็บจริง (เช่น `https://jams-english-desk.vercel.app`) ใน Site URL และ Redirect URLs
-   - หลังแจมล็อกอินครั้งแรกแล้ว: Authentication → Settings → **ปิด Allow new users to sign up** กันคนแปลกหน้าสมัคร
-   - ⚠️ บน iPhone ให้ทดสอบล็อกอินจากไอคอนบนหน้าจอโฮมด้วย (แอปจากหน้าจอโฮมเก็บข้อมูลแยกจาก Safari)
-   - ตั้งค่า `VITE_SUPABASE_*` และ `SUPABASE_*` **พร้อมกันทั้ง 4 ตัว** แล้ว Redeploy ไม่งั้นแอปจะขึ้นว่าตั้งค่าไม่ตรงกัน
-2. **Netlify**: New site → Import จากโฟลเดอร์หรือ Git (`netlify.toml` ตั้งค่า build ไว้แล้ว) → Site settings → Environment variables:
-   | ชื่อ | ค่า |
-   |---|---|
-   | `GEMINI_API_KEY` | key จากขั้นที่ 1 (ใส่เฉพาะฝั่งเซิร์ฟเวอร์ เบราว์เซอร์มองไม่เห็น) |
-   | `ALLOWED_EMAIL` | **ต้องใส่** อีเมล Google ของแจม ถ้าเว้นว่าง แอปจะปิดการใช้ AI ทั้งหมด (กันคนอื่นมาใช้โควตาฟรี) |
-   | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | จาก Supabase → Project Settings → API |
-   | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | ค่าเดียวกับบรรทัดบน |
-3. เปิดลิงก์บนมือถือ → Share → **Add to Home Screen** จะได้ไอคอนเหมือนแอป
+```
+npm run db:migrate          # ครั้งแรก / เมื่อมี migration ใหม่
+npx wrangler secret put KEY_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET GROQ_API_KEY   # ทีละตัว
+npm run deploy
+```
 
-> 🔒 ถ้าขึ้น Netlify โดยยังไม่ตั้ง Supabase + `ALLOWED_EMAIL` แอปจะ **ปิด AI ไว้ก่อน** (ขึ้นข้อความ "ยังตั้งค่าการเข้าสู่ระบบไม่เสร็จ") ส่วนตอนรันในเครื่องด้วย `npm run dev` ใช้ได้เลยโดยไม่ต้องล็อกอิน
+Optional: `SPONSORED_EMAILS` (คั่นด้วย ,) + `GEMINI_API_KEY` สำหรับบัญชีที่ใช้ key ของแอป
 
-## โลโก้และสี GoDigit
-- โลโก้อยู่ที่ `public/brand/logo.png` (และ `logo-white.png` สำหรับพื้นเข้ม) สีดึงจากโลโก้ไว้ใน [src/brand.ts](src/brand.ts) แก้ที่ไฟล์เดียว สีทั้งแอปจะเปลี่ยนตาม
+## Dev probes
 
-## โครงสร้าง
-- `netlify/functions/live-token.ts` — ออก token ชั่วคราวให้เบราว์เซอร์คุยกับ Gemini Live (`gemini-3.8-live`) โดยไม่เห็น API key
-- `netlify/functions/coach.ts` — งานข้อความ (`gemini-3.6-flash` + สำรอง 3.5-flash-lite, 3.8-flash): ช่วยแปลตอนนึกไม่ออก, ซับไทย, ให้ดาวและการ์ดสรุป, สร้างบทซ้อมก่อนเจอจริง, โหมดสำรอง
-- `src/lib/conversation.ts` — การคุยด้วยเสียง: Live API และ **โหมดสำรอง** อัตโนมัติเมื่อโควตาฟรีหมด
-- `src/components/Avatar.tsx` — หน้าตัวละครวาดด้วย SVG ขยับปากตามเสียง มี 3 สไตล์ (Pixar / อนิเมะ / เกือบเหมือนคน)
-- `src/data/curriculum.ts` — บทเรียนระดับ 1–2 (14 สถานการณ์) · `src/data/characters.ts` — ตัวละครและเสียง
-- เปิด `/?gallery` ตอน dev เพื่อดูตัวละครทุกสไตล์
-
-## เครื่องมือทดสอบ (dev/)
-- `node dev/probe-live.mjs` — ทดสอบ Live API ผ่าน token ของแอป (ต้องรัน `npm run dev` ไว้)
-- `node dev/probe-models.mjs <model...>` — เช็กว่าโมเดลฟรีตัวไหนตอบได้ตอนนี้
-- `node dev/probe-config.mjs` — เช็กค่า config ที่แต่ละโมเดลรับได้
-- `node dev/check-auth.mjs` — ยืนยันว่า API ปิดไว้เป็นค่าเริ่มต้นเมื่อไม่ได้ตั้งค่าล็อกอิน
-- `dev/fake-mic.js` — ไมค์จำลอง (เสียงเงียบ) สำหรับทดสอบในเบราว์เซอร์ที่ปิดไมค์
+`dev/probe-long.mjs` จำลองสาย Live ยาว ๆ (ตรวจอาการโค้ชเงียบ), `dev/check-echo-gate.mjs` ตรวจ echo gate + end nudge

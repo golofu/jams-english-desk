@@ -2,8 +2,8 @@
 //
 // On a phone speaker the partner's own voice leaks back into the mic. Echo cancellation misses
 // WebAudio output on some phones, and auto-gain lifts the leak to speaking level, so a loudness
-// threshold can't tell it from Jam. Live then hears "someone talking": it cuts the partner off
-// after a word or two and transcribes its own voice as Jam's line, often in a random language.
+// threshold can't tell it from the learner. Live then hears "someone talking": it cuts the partner off
+// after a word or two and transcribes its own voice as the learner's line, often in a random language.
 // So the call is half-duplex: while the partner talks, and for a short tail after (the speaker
 // lags the audio clock and the room rings on), Live gets silence.
 
@@ -23,6 +23,40 @@ export function makeGate(extraTailMs: () => number = () => 0, now: () => number 
     }
     quietSince ??= now();
     return now() - quietSince >= ECHO_TAIL_MS + extraTailMs();
+  };
+}
+
+/** Quiet after the learner's last sound before the app ends their turn itself (Live's own wait is 2 s). */
+export const END_NUDGE_MS = 3500;
+
+/**
+ * Live sometimes transcribes the learner's whole answer yet never decides they have finished: the partner
+ * stays silent for minutes (dev/probe-long.mjs, 2026-10-28: 4 of 11 answers stalled 110–140 s).
+ * Telling Live her audio stream ended makes it answer at once (same probe: 43 answers, 0 stalls).
+ * `due()` is true once, END_NUDGE_MS after her last sound, if Live heard words and has not replied.
+ */
+export function makeEndNudge(now: () => number = () => Date.now()) {
+  let lastSound = 0;
+  let waiting = false;
+  return {
+    /** A loud mic chunk that reached Live (noise alone never triggers a nudge). */
+    sound() {
+      lastSound = now();
+    },
+    /** Live transcribed some of the learner's words. */
+    words() {
+      lastSound = now();
+      waiting = true;
+    },
+    /** The partner started replying, or the turn ended. */
+    answered() {
+      waiting = false;
+    },
+    due(): boolean {
+      if (!waiting || now() - lastSound < END_NUDGE_MS) return false;
+      waiting = false;
+      return true;
+    },
   };
 }
 

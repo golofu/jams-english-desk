@@ -1,5 +1,5 @@
 import type { LiveConnectConfig, LiveServerMessage, Session } from '@google/genai';
-import { liveInputConfig, makeGate } from './echoGate';
+import { liveInputConfig, makeEndNudge, makeGate } from './echoGate';
 import { markVoiceQuota } from './usage';
 import { api, ApiError, coach } from './api';
 import { PcmPlayer, audioCtx, b64FromBytes, browserSpeechLevel, outputLatencyMs, speak, startMic, stopSpeaking, wavFromPcm16, type Mic } from './audio';
@@ -21,11 +21,11 @@ type Opts = {
   onNotice: (th: string) => void;
 };
 
-const KICKOFF = '(System: Jam has just joined the call. Do not reply to this note — start the conversation yourself now, exactly as your instructions describe.)';
+const KICKOFF = '(System: the learner has just joined the call. Do not reply to this note — start the conversation yourself now, exactly as your instructions describe.)';
 const CONNECT_TIMEOUT_MS = 10_000;
 const MAX_UTTER_CHUNKS = 150; // 15 s of 100 ms chunks — keeps fallback uploads small
 // The partner always speaks first. Until it does, Live must not hear the room: continuous sound
-// (TV, chatter, Jam already talking) holds Live's turn open and the greeting never comes.
+// (TV, chatter, the learner already talking) holds Live's turn open and the greeting never comes.
 const OPENING_GATE_MS = 8_000;
 function rms(pcm: Int16Array): number {
   let sum = 0;
@@ -49,7 +49,7 @@ export class Conversation {
   private mic: Mic | null = null;
   private jamBuf = '';
   private aiBuf = '';
-  private turnJamLine: Line | null = null; // Jam's line that the current AI turn answers
+  private turnJamLine: Line | null = null; // the learner's line that the current AI turn answers
   private seq = 0;
   private holding = false;
   private helpChunks: Int16Array[] = [];
@@ -61,6 +61,8 @@ export class Conversation {
   // 🔊 phrase/help buttons and the backup voice, which use browser speech) and just after.
   private echoGate = makeGate(outputLatencyMs);
   private micOpen = false; // last chunk reached the AI: only then does the screen say "พูดได้เลย"
+  // Live can hear the learner's answer yet never end their turn: after a quiet spell the app ends it (echoGate.ts).
+  private endNudge = makeEndNudge();
   private speakerBusy() {
     return !!this.player?.playing || ('speechSynthesis' in window && speechSynthesis.speaking);
   }
@@ -73,11 +75,11 @@ export class Conversation {
 
   constructor(private o: Opts) {}
 
-  /** Throws only for problems Jam must fix herself (setup, login, mic permission). */
+  /** Throws only for problems the learner must fix personally (setup, login, mic permission). */
   async start() {
     this.setState('connecting');
     const ac = await audioCtx();
-    if (this.ended) return; // Jam left before the mic prompt: don't turn the mic on
+    if (this.ended) return; // the learner left before the mic prompt: don't turn the mic on
     this.player = new PcmPlayer(ac);
     // Mic first: the permission prompt comes before the AI talks, and on iOS the
     // audio session is play-and-record from the start.
@@ -177,16 +179,20 @@ export class Conversation {
     if (this.ended) return;
     const sc = m.serverContent;
     if (!sc) return;
-    if (sc.outputTranscription?.text || sc.modelTurn?.parts?.length) this.openingUntil = 0; // the partner has started
+    if (sc.outputTranscription?.text || sc.modelTurn?.parts?.length || sc.turnComplete) {
+      this.openingUntil = 0; // the partner has started
+      this.endNudge.answered();
+    }
+    if (sc.inputTranscription?.text && !this.holding) this.endNudge.words();
     if (sc.interrupted) {
       this.player?.clear();
-      this.flushAi(); // what was said before Jam cut in stays before her words
+      this.flushAi(); // what was said before the learner cut in stays before their words
     }
     if (sc.inputTranscription?.text) {
       if (this.aiBuf) this.flushAi();
       this.jamBuf += sc.inputTranscription.text;
     }
-    // While Jam holds "นึกไม่ออก" the partner's audio is dropped, so drop its words too:
+    // While the learner holds "นึกไม่ออก" the partner's audio is dropped, so drop its words too:
     // the transcript (and the review/stars) must only contain what she actually heard.
     if (sc.outputTranscription?.text && !this.holding) {
       if (this.jamBuf) {
@@ -198,7 +204,7 @@ export class Conversation {
     }
     for (const p of sc.modelTurn?.parts ?? []) {
       const d = p.inlineData;
-      // While Jam holds "นึกไม่ออก" the partner stays quiet (and out of her Thai recording).
+      // While the learner holds "นึกไม่ออก" the partner stays quiet (and out of their Thai recording).
       if (d?.data && d.mimeType?.startsWith('audio/') && !this.holding) {
         const rate = Number(/rate=(\d+)/.exec(d.mimeType)?.[1] ?? 24000);
         this.player?.play(d.data, rate);
@@ -206,7 +212,7 @@ export class Conversation {
     }
     if (sc.turnComplete) {
       this.flushAi();
-      // Late transcription of Jam's words belongs to the line this turn answered.
+      // Late transcription of the learner's words belongs to the line this turn answered.
       const late = this.jamBuf.trim();
       this.jamBuf = '';
       if (late && this.turnJamLine) {
@@ -269,7 +275,7 @@ export class Conversation {
           this.setState('speaking');
           await speak(r.reply, { rate: this.o.speechRate, gender: this.o.gender });
           // speak() may resolve early (engine quirks); keep the mic closed until the voice is
-          // really done, or the fallback would record its own voice as Jam's turn.
+          // really done, or the fallback would record its own voice as the learner's turn.
           for (let t = 0; t < 60 && !this.ended && 'speechSynthesis' in window && speechSynthesis.speaking; t++) {
             await new Promise((res) => setTimeout(res, 250));
           }
@@ -302,14 +308,16 @@ export class Conversation {
       return;
     }
     if (this.mode === 'live') {
-      // Speakerphone echo would make Live cut the partner off and hear him as Jam (echoGate.ts):
+      // Speakerphone echo would make Live cut the partner off and hear him as the learner (echoGate.ts):
       // while the speaker plays, and just after, silence is sent to keep the stream steady.
       let out = pcm;
       this.micOpen = this.echoGate(this.speakerBusy()) && Date.now() >= this.openingUntil;
       if (!this.micOpen) out = new Int16Array(pcm.length);
+      else if (rms(pcm) > 0.02) this.endNudge.sound();
       this.session?.sendRealtimeInput({
         audio: { data: b64FromBytes(new Uint8Array(out.buffer)), mimeType: 'audio/pcm;rate=16000' },
       });
+      if (this.endNudge.due()) this.session?.sendRealtimeInput({ audioStreamEnd: true });
       return;
     }
     if (this.state === 'connecting') return;
@@ -339,15 +347,16 @@ export class Conversation {
     }
   }
 
-  /** "นึกไม่ออก" — hold: Jam speaks Thai, which is NOT sent to the character. */
+  /** "นึกไม่ออก" — hold: the learner speaks Thai, which is NOT sent to the character. */
   holdHelp() {
     this.holding = true;
     this.helpChunks = [];
     this.player?.clear();
     stopSpeaking();
     this.resetVad();
+    this.endNudge.answered(); // her half sentence before the hold must not be ended for her
     // No audioStreamEnd here: it makes Live answer the half sentence right away (an answer
-    // Jam would never hear). With no audio frames the server simply waits for more.
+    // the learner would never hear). With no audio frames the server simply waits for more.
   }
   private resetVad() {
     this.utter = [];
@@ -383,7 +392,7 @@ export class Conversation {
   }
   /**
    * Derived each frame so the avatar reacts instantly. "listening" (พูดได้เลย) only while the mic
-   * really reaches the AI: during speaker sound and its echo tail Jam would not be heard.
+   * really reaches the AI: during speaker sound and its echo tail the learner would not be heard.
    */
   liveState(): ConvState {
     if (this.ended) return 'ended';

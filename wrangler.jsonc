@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "english-desk",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  // process.env (vars + secrets), Buffer and node:crypto for the AI code that came from Netlify functions.
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  "vars": {
+    "APP_BASE_URL": "https://english-desk.golfinbox.workers.dev"
+  },
+  // The Vite build is served as static files; the Worker only runs for these paths.
+  "assets": {
+    "directory": "dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/auth/*", "/health"]
+  },
+  "d1_databases": [{ "binding": "DB", "database_name": "english-desk", "database_id": "41d5ceea-fe49-4f00-a427-eb68533dd2bb", "migrations_dir": "migrations" }],
+  "r2_buckets": [{ "binding": "SNAPSHOTS", "bucket_name": "english-desk-snapshots" }]
+  // Secrets (wrangler secret put): GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, KEY_SECRET, GROQ_API_KEY,
+  // and optionally GEMINI_API_KEY + SPONSORED_EMAILS for accounts that use the app's own key.
+}

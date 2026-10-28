@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { SNAPSHOT_PROMPTS } from '../data/curriculum';
 import { recordClip } from '../lib/audio';
 import { putClip } from '../lib/idb';
-import { supabase } from '../lib/supabase';
 import { dayStr, uid } from '../lib/store';
 import { useWakeLock } from '../lib/wakelock';
 import { useApp } from '../state';
@@ -11,7 +10,7 @@ const PER_PROMPT = 60;
 
 /** Voice Snapshot: ~3 minutes, same three prompts every month, to hear the before/after. */
 export function SnapshotRecorder({ onDone, onSkip }: { onDone: () => void; onSkip?: () => void }) {
-  const { update, userId } = useApp();
+  const { update } = useApp();
   const [i, setI] = useState(-1);
   const [left, setLeft] = useState(PER_PROMPT);
   const [err, setErr] = useState('');
@@ -63,11 +62,11 @@ export function SnapshotRecorder({ onDone, onSkip }: { onDone: () => void; onSki
         local = false; // private mode / storage full — the cloud copy may still work
       }
       let remotePath: string | undefined;
-      if (supabase && userId) {
-        const path = `${userId}/${id}.${blob.type.includes('mp4') ? 'm4a' : 'webm'}`;
-        // The bucket allows "audio/webm", not Chrome's "audio/webm;codecs=opus".
-        const { error } = await supabase.storage.from('snapshots').upload(path, blob, { contentType: blob.type.split(';')[0] });
-        if (!error) remotePath = path;
+      {
+        const path = `${id}.${blob.type.includes('mp4') ? 'm4a' : 'webm'}`;
+        // The Worker accepts "audio/webm", not Chrome's "audio/webm;codecs=opus".
+        const r = await fetch(`/api/snapshots/${path}`, { method: 'PUT', body: blob, headers: { 'content-type': blob.type.split(';')[0] } }).catch(() => null);
+        if (r?.ok) remotePath = path;
       }
       if (!local && !remotePath) throw new Error('NOWHERE');
       update('snapshots', (s) => [{ id, date: dayStr(), seconds, remotePath }, ...s]);
@@ -84,7 +83,7 @@ export function SnapshotRecorder({ onDone, onSkip }: { onDone: () => void; onSki
     return (
       <div className="snapshot">
         <h3>🎙️ Voice Snapshot</h3>
-        <p>อัดเสียงพูดภาษาอังกฤษ 3 เรื่อง เรื่องละประมาณ 1 นาที พูดได้แค่ไหนก็แค่นั้น ไม่มีใครฟังนอกจากแจม</p>
+        <p>อัดเสียงพูดภาษาอังกฤษ 3 เรื่อง เรื่องละประมาณ 1 นาที พูดได้แค่ไหนก็แค่นั้น ไม่มีใครฟังนอกจากคุณ</p>
         <p className="hint">ทุกสิ้นเดือนจะอัดเรื่องเดิมอีกครั้ง แล้วเปิดฟังเทียบว่าเก่งขึ้นแค่ไหน</p>
         {err && <div className="alert">{err}</div>}
         <button className="btn primary big" onClick={start}>เริ่มอัดเสียง</button>

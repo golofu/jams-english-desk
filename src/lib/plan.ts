@@ -14,6 +14,6 @@ export function nextScenario(sessions: SessionLog[], level: number): Scenario | 
   )[0];
 }
 
-/** Role-plays held today: Jam practises as many as she likes, the count is just for the home screen. */
+/** Role-plays held today: the learner practises as many as they like, the count is just for the home screen. */
 export const rolePlaysOn = (sessions: SessionLog[], day: string) =>
   sessions.filter((s) => s.date === day && s.kind === 'morning' && s.scenarioId).length;

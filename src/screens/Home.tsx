@@ -2,7 +2,7 @@ import { CHARACTERS } from '../data/characters';
 import { LEVELS, SCENARIOS } from '../data/curriculum';
 import { Avatar } from '../components/Avatar';
 import { UsageCard } from '../components/UsageCard';
-import { dayStr, levelStatus, streak } from '../lib/store';
+import { dayStr, learnerName, levelStatus, streak } from '../lib/store';
 import { nextScenario, rolePlaysOn } from '../lib/plan';
 import { useApp } from '../state';
 
@@ -27,7 +27,7 @@ export function Home({ go }: { go: Go }) {
   const st = levelStatus(data.sessions, prof.level, SCENARIOS.filter((x) => x.level === prof.level).length);
   const hour = new Date().getHours();
   const nightFirst = hour >= 17 && didMorning;
-  // Level 3+ ships later: don't leave Jam staring at "3/3" with nothing happening.
+  // Level 3+ ships later: don't leave the learner staring at "3/3" with nothing happening.
   const maxed = st.ready && !LEVELS[prof.level]?.available;
 
   const morning = (
@@ -70,7 +70,7 @@ export function Home({ go }: { go: Go }) {
       <div className="hero">
         <Avatar character={CHARACTERS.jimmy} style={prof.style} size={120} />
         <div className="bubble">
-          <b>{greeting(hour)}, Jam!</b>
+          <b>{greeting(hour)}, {learnerName(prof)}!</b>
           <div>
             {didMorning && didNight
               ? 'วันนี้ครบทั้ง 2 รอบแล้ว เก่งมาก!'

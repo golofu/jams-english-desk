@@ -1,5 +1,5 @@
 // Groq: a second free AI provider for the text jobs. Its free tier allows ~1,000 requests
-// a day per model (Gemini's free text models: ~20), and Whisper turns Jam's speech into
+// a day per model (Gemini's free text models: ~20), and Whisper turns the learner's speech into
 // text so the text models can work with it. OpenAI-compatible REST, so no extra package.
 const BASE = 'https://api.groq.com/openai/v1';
 export const GROQ_MODELS = (process.env.GROQ_MODELS || 'openai/gpt-oss-120b,openai/gpt-oss-20b').split(',').map((m) => m.trim()).filter(Boolean);
@@ -29,7 +29,7 @@ async function call(path: string, init: RequestInit, signal: AbortSignal): Promi
   return JSON.parse(text);
 }
 
-/** Speech → text. lang: 'th' for Jam's Thai (help, prep), 'en' for her English turns. */
+/** Speech → text. lang: 'th' for the learner's Thai (help, prep), 'en' for their English turns. */
 export async function transcribe(wavB64: string, lang: 'th' | 'en', signal: AbortSignal): Promise<string> {
   const form = new FormData();
   form.append('file', new Blob([Buffer.from(wavB64, 'base64')], { type: 'audio/wav' }), 'speech.wav');

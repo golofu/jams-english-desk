@@ -1,5 +1,5 @@
 // Dev check: echo gate timing with a fake clock.  node dev/check-echo-gate.mjs
-import { ECHO_TAIL_MS, makeGate } from '../src/lib/echoGate.ts';
+import { ECHO_TAIL_MS, END_NUDGE_MS, makeEndNudge, makeGate } from '../src/lib/echoGate.ts';
 let t = 0, lag = 0, fails = 0;
 const gate = makeGate(() => lag, () => t);
 const step = (ms, playing, want, name) => { t += ms; const got = gate(playing); if (got !== want) fails++; console.log(`${got === want ? 'PASS' : 'FAIL'}  ${name} (t=${t})`); };
@@ -15,4 +15,18 @@ step(100, false, false, 'quiet starts');
 step(ECHO_TAIL_MS, false, false, 'Bluetooth: still shut at the normal tail');
 step(300, false, true, 'Bluetooth: opens after tail + lag');
 step(100, true, false, 'a new sentence shuts it again');
+// End-of-turn nudge
+const nudge = makeEndNudge(() => t);
+const due = (ms, want, name) => { t += ms; const got = nudge.due(); if (got !== want) fails++; console.log(`${got === want ? 'PASS' : 'FAIL'}  nudge: ${name} (t=${t})`); };
+nudge.sound();
+due(END_NUDGE_MS + 100, false, 'noise alone never ends her turn');
+nudge.words();
+due(END_NUDGE_MS - 100, false, 'waits while she may still be pausing');
+nudge.sound();
+due(END_NUDGE_MS - 100, false, 'more speech restarts the wait');
+due(100, true, 'ends her turn after the quiet spell');
+due(5000, false, 'only once per answer');
+nudge.words();
+nudge.answered();
+due(END_NUDGE_MS + 100, false, 'no nudge once the partner replies');
 process.exit(fails ? 1 : 0);

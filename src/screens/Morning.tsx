@@ -7,7 +7,7 @@ import { MicCheck } from '../components/MicCheck';
 import { Avatar } from '../components/Avatar';
 import { jimmyChatPrompt, rolePlayPrompt } from '../lib/prompts';
 import { unlockSpeech } from '../lib/audio';
-import { dayStr, localDayIndex, uid } from '../lib/store';
+import { dayStr, learnerName, localDayIndex, uid } from '../lib/store';
 import { nextScenario, rolePlaysOn, scenarioVisits } from '../lib/plan';
 import { useApp } from '../state';
 
@@ -23,10 +23,11 @@ type Step = 'start' | 'miccheck' | 'chat' | 'roleplay' | 'review' | 'done';
 /**
  * Morning Talk: mic check → chat with Jimmy → role-play → review (≈17 min). It's a speaking app: talk to the AI from the first minute.
  * `extra`: one more lesson after the first, any time of day — straight to the role-play, no second coach chat.
- * Jam sets her own pace (3 lessons today, 1 tomorrow); `onMore` starts the next one from the done screen.
+ * The learner sets their own pace (3 lessons today, 1 tomorrow); `onMore` starts the next one from the done screen.
  */
 export function Morning({ onExit, onMore, scenarioId, extra }: { onExit: () => void; onMore?: () => void; scenarioId?: string; extra?: boolean }) {
   const { data, update } = useApp();
+  const name = learnerName(data.profile);
   const prof = data.profile;
   const [step, setStep] = useState<Step>('start');
   const [busy, setBusy] = useState(false);
@@ -63,7 +64,7 @@ export function Morning({ onExit, onMore, scenarioId, extra }: { onExit: () => v
       <div className="screen morning">
         <button className="link back" onClick={onExit}>‹ กลับ</button>
         <div className="kicker">➕ ฝึกบทต่อไป · ระดับ {prof.level} {level.nameEn}</div>
-        <h2>อีกบทนะ แจม!</h2>
+        <h2>อีกบทนะ {name}!</h2>
         <div className="plan">
           <PlanRow n="1" t={`Role-play: ${plan.scenario.titleTh} กับ ${plan.character.name}`} m="8 นาที" />
           <PlanRow n="2" t="ดูผล + เก็บประโยค" m="4 นาที" />
@@ -85,7 +86,7 @@ export function Morning({ onExit, onMore, scenarioId, extra }: { onExit: () => v
       <div className="screen morning">
         <button className="link back" onClick={onExit}>‹ กลับ</button>
         <div className="kicker">☀️ Morning Talk · ระดับ {prof.level} {level.nameEn}</div>
-        <h2>อรุณสวัสดิ์ แจม!</h2>
+        <h2>อรุณสวัสดิ์ {name}!</h2>
         <div className="plan">
           <PlanRow n="1" t={`คุยกับ ${prof.coachName}: ${plan.topic.th}`} m="5 นาที" />
           <PlanRow n="2" t={`Role-play: ${plan.scenario.titleTh} กับ ${plan.character.name}`} m="8 นาที" dim={busy} />
@@ -127,7 +128,7 @@ export function Morning({ onExit, onMore, scenarioId, extra }: { onExit: () => v
         kicker="ขั้นที่ 1 · คุยกับโค้ช"
         title={plan.topic.en}
         situationTh={`คุยเล่นกับ ${prof.coachName} เรื่อง "${plan.topic.th}" ตอบสั้นๆ ก็ได้ ไม่ต้องกลัวผิด`}
-        system={jimmyChatPrompt({ coachName: prof.coachName, speed: prof.speed, topic: plan.topic.en, memory: memoryWithAge(prof.memory, prof.memoryDate), level: prof.level })}
+        system={jimmyChatPrompt({ learner: prof, coachName: prof.coachName, speed: prof.speed, topic: plan.topic.en, memory: memoryWithAge(prof.memory, prof.memoryDate), level: prof.level })}
         seconds={300}
         // Shy or offline in the chat: she can still go on to the role-play. On a busy day the chat
         // is the whole session, so nothing was practised: back home, no "well done" screen.
@@ -149,7 +150,7 @@ export function Morning({ onExit, onMore, scenarioId, extra }: { onExit: () => v
         situationTh={plan.scenario.situationTh}
         keyPhrases={plan.scenario.keyPhrases}
         tasks={plan.scenario.tasks}
-        system={rolePlayPrompt({ scenario: plan.scenario, character: plan.character.id, speed: prof.speed })}
+        system={rolePlayPrompt({ learner: prof, scenario: plan.scenario, character: plan.character.id, speed: prof.speed })}
         seconds={480}
         // The chat already counted; end on the done screen rather than dumping her at home.
         onCancel={() => (chatLogged ? setStep('done') : onExit())}
@@ -172,7 +173,7 @@ export function Morning({ onExit, onMore, scenarioId, extra }: { onExit: () => v
   return (
     <div className="screen center-col">
       <Avatar character={jimmy} style={prof.style} size={170} />
-      <h2>เก่งมาก แจม! 🎉</h2>
+      <h2>เก่งมาก {name}! 🎉</h2>
       <p>
         {lessons > 1 ? `วันนี้ฝึกไปแล้ว ${lessons} บท` : 'Morning Talk วันนี้เสร็จแล้ว'} ยังไหวก็ไปบทต่อไปได้เลย
         ถ้าพอแค่นี้ คืนนี้ก่อนนอนมาฟังทบทวนอีก 10 นาทีนะ

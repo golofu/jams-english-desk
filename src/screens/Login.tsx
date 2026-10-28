@@ -1,28 +1,40 @@
 import { useState } from 'react';
 import { CHARACTERS } from '../data/characters';
 import { Avatar } from '../components/Avatar';
-import { supabase } from '../lib/supabase';
+import { LOGIN_URL, inLineBrowser, openOutsideLine } from '../lib/auth';
 import { BRAND } from '../brand';
 
+const ERRORS: Record<string, string> = {
+  cancelled: 'ยกเลิกการเข้าสู่ระบบแล้ว กดปุ่มด้านล่างเพื่อลองใหม่ค่ะ',
+  email: 'บัญชี Google นี้ยังไม่ได้ยืนยันอีเมล ลองบัญชีอื่นนะคะ',
+};
+
 export function Login() {
-  // Google/Supabase report failures (e.g. access_denied) in the redirect URL — show them.
-  const [err, setErr] = useState(() => {
-    const q = new URLSearchParams(location.hash.slice(1) || location.search);
-    const e = q.get('error_description') || q.get('error');
-    if (e) console.warn('login error', e); // details for the admin; Jam gets plain Thai
-    return !e ? '' : /access_denied/i.test(e) ? 'ยกเลิกการเข้าสู่ระบบแล้ว กดปุ่มด้านล่างเพื่อลองใหม่ค่ะ' : 'เข้าสู่ระบบไม่สำเร็จ ลองใหม่อีกครั้ง ถ้ายังไม่ได้ แจ้งผู้ดูแลแอปนะคะ';
+  // The Worker reports a failed Google login in the URL (/?login_error=...): show it in plain Thai.
+  const [err] = useState(() => {
+    const e = new URLSearchParams(location.search).get('login_error');
+    if (e) {
+      console.warn('login error', e);
+      history.replaceState(null, '', '/');
+    }
+    return e ? ERRORS[e] || 'เข้าสู่ระบบไม่สำเร็จ ลองใหม่อีกครั้ง ถ้ายังไม่ได้ แจ้งผู้ดูแลแอปนะคะ' : '';
   });
-  async function login() {
-    const { error } = await supabase!.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
-    if (error) setErr('เข้าสู่ระบบไม่สำเร็จ ลองใหม่อีกครั้ง');
-  }
+  const line = inLineBrowser();
   return (
     <div className="screen login center-col">
-      <img src={BRAND.logo} alt={BRAND.company} className="logo big" />
+      <img src={BRAND.logo} alt={BRAND.appName} className="logo big" />
       <Avatar character={CHARACTERS.jimmy} style="pixar" size={190} />
       <h1>{BRAND.appName}</h1>
-      <p>ฝึกพูดและฟังภาษาอังกฤษสำหรับงานเลขา CEO กับ Jimmy</p>
-      <button className="btn primary big" onClick={login}>เข้าสู่ระบบด้วย Google</button>
+      <p>ฝึกพูดและฟังภาษาอังกฤษสำหรับใช้ในที่ทำงาน กับโค้ช Jimmy วันละไม่กี่นาที</p>
+      {line ? (
+        <>
+          <p className="small">Google ไม่ให้เข้าสู่ระบบจากในแอป LINE กดปุ่มเพื่อเปิดใน Chrome หรือ Safari ก่อนนะคะ</p>
+          <button className="btn primary big" onClick={openOutsideLine}>เปิดในเบราว์เซอร์</button>
+        </>
+      ) : (
+        <a className="btn primary big" href={LOGIN_URL}>เข้าสู่ระบบด้วย Google</a>
+      )}
+      <p className="small">ฟรี ใช้ AI ฟรีของ Google ด้วยกุญแจของคุณเอง (มีขั้นตอนสอนหลังเข้าสู่ระบบ)</p>
       {err && <div className="alert">{err}</div>}
     </div>
   );

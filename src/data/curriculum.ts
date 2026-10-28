@@ -7,7 +7,7 @@ export type Scenario = {
   level: number;
   titleTh: string;
   titleEn: string;
-  situationTh: string; // shown to Jam before the call
+  situationTh: string; // shown to the learner before the call
   goalEn: string; // for the AI
   partnerRole: string; // who the partner plays in this scene
   opening: string; // partner's first line
@@ -36,14 +36,14 @@ export const SCENARIOS: Scenario[] = [
   {
     id: 'l1-intro', level: 1,
     titleTh: 'แนะนำตัวกับแขก', titleEn: 'Nice to meet you',
-    situationTh: 'แขกต่างชาติมาถึงหน้าห้อง CEO แจมแนะนำตัวและทักทาย',
-    goalEn: 'Introduce herself, say her role, and ask the guest one friendly question.',
+    situationTh: 'แขกต่างชาติมาถึงหน้าห้อง CEO คุณแนะนำตัวและทักทาย',
+    goalEn: 'Introduce yourself, say your role, and ask the guest one friendly question.',
     partnerRole: 'a visitor who just arrived at the CEO office',
     opening: "Hi there! I'm here to see your CEO. I'm a bit early, I think.",
-    tasks: ['Greet the guest', 'Say her name and job', 'Ask one friendly question'],
+    tasks: ['Greet the guest', 'Say your name and job', 'Ask one friendly question'],
     keyPhrases: [
-      { en: 'Good morning. Welcome to GoDigit.', th: 'สวัสดีค่ะ ยินดีต้อนรับสู่ GoDigit ค่ะ' },
-      { en: "My name is Jam. I'm the CEO's assistant.", th: 'ดิฉันชื่อแจม เป็นผู้ช่วย CEO ค่ะ' },
+      { en: 'Good morning. Welcome to our company.', th: 'สวัสดีค่ะ ยินดีต้อนรับสู่บริษัทของเราค่ะ' },
+      { en: "I'm the CEO's assistant.", th: 'ดิฉันเป็นผู้ช่วย CEO ค่ะ' },
       { en: 'Nice to meet you.', th: 'ยินดีที่ได้รู้จักค่ะ' },
       { en: 'How was your trip here?', th: 'เดินทางมาเป็นอย่างไรบ้างคะ' },
     ],
@@ -52,11 +52,11 @@ export const SCENARIOS: Scenario[] = [
   {
     id: 'l1-cards', level: 1,
     titleTh: 'แลกนามบัตร ถามเรื่องงานของแขก', titleEn: 'Exchanging business cards',
-    situationTh: 'แขกจากบริษัทคู่ค้ามาถึง แจมแลกนามบัตรและถามว่าแขกมาจากบริษัทไหน ตำแหน่งอะไร',
+    situationTh: 'แขกจากบริษัทคู่ค้ามาถึง คุณแลกนามบัตรและถามว่าแขกมาจากบริษัทไหน ตำแหน่งอะไร',
     goalEn: 'Exchange business cards politely and ask about the guest\'s company and position.',
     partnerRole: 'a visitor from a partner company, holding out a business card',
     opening: "Hello, I'm from a partner company. Here is my business card.",
-    tasks: ['Receive the card politely', 'Give her own card', 'Ask about the guest\'s company or position'],
+    tasks: ['Receive the card politely', 'Give your own card', 'Ask about the guest\'s company or position'],
     keyPhrases: [
       { en: 'Thank you. Here is my business card.', th: 'ขอบคุณค่ะ นี่นามบัตรของดิฉันค่ะ' },
       { en: 'Which company are you with?', th: 'คุณมาจากบริษัทไหนคะ' },
@@ -68,7 +68,7 @@ export const SCENARIOS: Scenario[] = [
   {
     id: 'l1-waiting', level: 1,
     titleTh: 'ดูแลแขกระหว่างรอประชุม', titleEn: 'Before the meeting starts',
-    situationTh: 'แขกมาก่อนเวลาประชุม แจมพาไปนั่งรอ ชวนคุยเรื่องการเดินทางมาบริษัท และแจ้งว่า CEO จะมาเมื่อไร',
+    situationTh: 'แขกมาก่อนเวลาประชุม คุณพาไปนั่งรอ ชวนคุยเรื่องการเดินทางมาบริษัท และแจ้งว่า CEO จะมาเมื่อไร',
     goalEn: 'Look after an early guest: offer a seat, ask about the trip to the office, and say when the CEO will join.',
     partnerRole: 'a business visitor who arrived early for a meeting with the CEO',
     opening: "Hi, I'm a little early for my meeting with your CEO.",
@@ -100,13 +100,13 @@ export const SCENARIOS: Scenario[] = [
   {
     id: 'l1-company', level: 1,
     titleTh: 'แนะนำบริษัทให้แขกฟัง', titleEn: 'About our company',
-    situationTh: 'แขกถามว่า GoDigit ทำธุรกิจอะไร และแผนกของแจมทำอะไร (ใช้คำกลางๆ ไม่ต้องบอกข้อมูลจริงที่เป็นความลับ)',
-    goalEn: 'Describe the company and her own role in simple, general terms, and ask about the guest\'s business.',
-    partnerRole: 'a visitor curious about GoDigit before the meeting',
-    opening: 'So, tell me a little about GoDigit. What does the company do?',
-    tasks: ['Say what the company does in one or two sentences', 'Explain her role', 'Ask about the guest\'s business'],
+    situationTh: 'แขกถามว่าบริษัทของคุณทำธุรกิจอะไร และแผนกของคุณทำอะไร (ใช้คำกลางๆ ไม่ต้องบอกข้อมูลจริงที่เป็นความลับ)',
+    goalEn: 'Describe the company and your own role in simple, general terms, and ask about the guest\'s business.',
+    partnerRole: 'a visitor curious about the company before the meeting',
+    opening: 'So, tell me a little about your company. What does it do?',
+    tasks: ['Say what the company does in one or two sentences', 'Explain your role', 'Ask about the guest\'s business'],
     keyPhrases: [
-      { en: 'GoDigit is a digital company.', th: 'GoDigit เป็นบริษัทด้านดิจิทัลค่ะ' },
+      { en: 'We are a digital company.', th: 'เราเป็นบริษัทด้านดิจิทัลค่ะ' },
       { en: 'We work with clients in many industries.', th: 'เราทำงานกับลูกค้าในหลายอุตสาหกรรมค่ะ' },
       { en: "I support our CEO with schedules and meetings.", th: 'ดิฉันดูแลตารางงานและการประชุมให้ CEO ค่ะ' },
       { en: 'What kind of business are you in?', th: 'คุณทำธุรกิจด้านไหนคะ' },
@@ -116,7 +116,7 @@ export const SCENARIOS: Scenario[] = [
   {
     id: 'l1-confirm', level: 1,
     titleTh: 'แจ้งรายละเอียดการประชุม', titleEn: 'Meeting details',
-    situationTh: 'แขกถามรายละเอียดการประชุมวันนี้ แจมบอกเวลา ห้อง ระยะเวลา และถามว่าต้องเตรียมอะไรเพิ่มไหม',
+    situationTh: 'แขกถามรายละเอียดการประชุมวันนี้ คุณบอกเวลา ห้อง ระยะเวลา และถามว่าต้องเตรียมอะไรเพิ่มไหม',
     goalEn: 'Give the meeting time, room and length clearly, and offer help with anything the guest needs (projector, documents).',
     partnerRole: 'a client checking the details of today\'s meeting',
     opening: 'Can you remind me of the details for today\'s meeting?',
@@ -133,13 +133,13 @@ export const SCENARIOS: Scenario[] = [
   {
     id: 'l2-answer', level: 2,
     titleTh: 'รับโทรศัพท์', titleEn: 'Answering the phone',
-    situationTh: 'มีสายเข้าห้อง CEO แจมรับสาย ถามชื่อและธุระของผู้โทร',
+    situationTh: 'มีสายเข้าห้อง CEO คุณรับสาย ถามชื่อและธุระของผู้โทร',
     goalEn: 'Answer professionally, get the caller\'s name and reason for calling, and put them on hold politely.',
     partnerRole: 'a caller who wants to speak to the CEO',
     opening: '(phone rings) ... Hello?',
-    tasks: ['Answer with company + her name', "Ask the caller's name", 'Ask the reason for the call', 'Ask them to hold'],
+    tasks: ['Answer with the company name + your name', "Ask the caller's name", 'Ask the reason for the call', 'Ask them to hold'],
     keyPhrases: [
-      { en: "Good afternoon, GoDigit, CEO's office. Jam speaking.", th: 'สวัสดีค่ะ GoDigit ห้อง CEO แจมรับสายค่ะ' },
+      { en: "Good afternoon, CEO's office. How may I help you?", th: 'สวัสดีค่ะ ห้อง CEO มีอะไรให้ช่วยไหมคะ' },
       { en: "May I ask who's calling, please?", th: 'ขอทราบชื่อผู้โทรได้ไหมคะ' },
       { en: 'May I ask what it is about?', th: 'ขอทราบเรื่องที่ติดต่อได้ไหมคะ' },
       { en: 'One moment, please. Please hold.', th: 'สักครู่นะคะ กรุณาถือสายรอค่ะ' },
@@ -149,7 +149,7 @@ export const SCENARIOS: Scenario[] = [
   {
     id: 'l2-message', level: 2,
     titleTh: 'รับฝากข้อความ', titleEn: 'Taking a message',
-    situationTh: 'CEO ติดประชุม ผู้โทรขอฝากข้อความ แจมต้องจดชื่อ บริษัท เบอร์ และเรื่อง แล้วทวนกลับ',
+    situationTh: 'CEO ติดประชุม ผู้โทรขอฝากข้อความ คุณต้องจดชื่อ บริษัท เบอร์ และเรื่อง แล้วทวนกลับ',
     goalEn: 'Explain the CEO is unavailable, take a full message (name, company, number, reason) and read it back.',
     partnerRole: 'a caller who wants to leave a message for the CEO',
     opening: 'Hello, could I speak to your CEO, please?',
@@ -166,7 +166,7 @@ export const SCENARIOS: Scenario[] = [
   {
     id: 'l2-welcome', level: 2,
     titleTh: 'ต้อนรับแขกที่นัดไว้', titleEn: 'Welcoming a visitor',
-    situationTh: 'แขกมาตามนัด 10 โมง แจมต้อนรับ ยืนยันนัด และพาไปห้องประชุม',
+    situationTh: 'แขกมาตามนัด 10 โมง คุณต้อนรับ ยืนยันนัด และพาไปห้องประชุม',
     goalEn: 'Welcome the visitor, confirm the appointment, offer a drink, and guide them to the meeting room.',
     partnerRole: 'a visitor arriving for a 10 a.m. meeting with the CEO',
     opening: "Hello, I have a meeting with your CEO at ten o'clock.",
@@ -182,7 +182,7 @@ export const SCENARIOS: Scenario[] = [
   {
     id: 'l2-late', level: 2,
     titleTh: 'CEO มาช้า ต้องขอโทษแขก', titleEn: 'The CEO is running late',
-    situationTh: 'CEO ติดธุระ จะมาช้า 15 นาที แจมต้องขอโทษแขกและเสนอทางเลือก',
+    situationTh: 'CEO ติดธุระ จะมาช้า 15 นาที คุณต้องขอโทษแขกและเสนอทางเลือก',
     goalEn: 'Apologize politely, give the new time, and offer options (wait, drink, Wi-Fi, reschedule).',
     partnerRole: 'a visitor whose meeting is delayed (a bit worried about time)',
     opening: "Excuse me, it's already ten. Is the CEO coming?",
@@ -203,7 +203,7 @@ export const SCENARIOS: Scenario[] = [
     goalEn: 'Book a single room for two nights, ask the price and whether breakfast is included, and confirm.',
     partnerRole: 'a hotel receptionist in Singapore',
     opening: 'Good morning, Marina Bay Grand Hotel. How can I help you?',
-    tasks: ['Say she wants to book a room', 'Give dates / nights / room type', 'Ask price + breakfast', 'Confirm the booking'],
+    tasks: ['Say you want to book a room', 'Give dates / nights / room type', 'Ask price + breakfast', 'Confirm the booking'],
     keyPhrases: [
       { en: "I'd like to book a room, please.", th: 'ต้องการจองห้องพักค่ะ' },
       { en: 'A single room for two nights, from the 5th to the 7th.', th: 'ห้องเดี่ยว 2 คืน วันที่ 5 ถึง 7 ค่ะ' },
@@ -216,7 +216,7 @@ export const SCENARIOS: Scenario[] = [
   {
     id: 'l2-flight', level: 2,
     titleTh: 'เลื่อนเที่ยวบิน', titleEn: 'Changing a flight',
-    situationTh: 'CEO ต้องเลื่อนเที่ยวบินกลับเป็นวันถัดไป แจมโทรติดต่อสายการบิน',
+    situationTh: 'CEO ต้องเลื่อนเที่ยวบินกลับเป็นวันถัดไป คุณโทรติดต่อสายการบิน',
     goalEn: 'Change the CEO\'s flight to the next day, ask about the fee, and choose a time.',
     partnerRole: 'an airline customer-service agent',
     opening: 'Thank you for calling Sky Asia Airlines. May I have your booking reference?',
@@ -242,7 +242,7 @@ export const SCENARIOS: Scenario[] = [
       { en: "This Friday at seven o'clock.", th: 'วันศุกร์นี้ 1 ทุ่มค่ะ' },
       { en: 'Do you have a private room?', th: 'มีห้องส่วนตัวไหมคะ' },
       { en: 'One guest is vegetarian.', th: 'มีแขกหนึ่งท่านทานมังสวิรัติค่ะ' },
-      { en: 'The reservation is under GoDigit.', th: 'จองในนามบริษัท GoDigit ค่ะ' },
+      { en: 'The reservation is under our company name.', th: 'จองในนามบริษัทของเราค่ะ' },
     ],
     characters: ['ben'],
   },
@@ -280,5 +280,5 @@ export const JIMMY_TOPICS: { en: string; th: string; monday?: boolean }[] = [
 export const SNAPSHOT_PROMPTS = [
   { th: 'แนะนำตัวเอง ชื่ออะไร ทำงานที่ไหน', en: 'Please introduce yourself.' },
   { th: 'เล่าว่างานเลขา CEO ต้องทำอะไรบ้างในหนึ่งวัน', en: 'What do you do in a normal workday?' },
-  { th: 'เล่าว่าบริษัทของเราทำอะไร และแจมดูแลงานอะไร', en: 'Tell me about your company and your role.' },
+  { th: 'เล่าว่าบริษัทของเราทำอะไร และคุณดูแลงานอะไร', en: 'Tell me about your company and your role.' },
 ];

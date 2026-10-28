@@ -8,7 +8,7 @@ type Status = 'opening' | 'listening' | 'ok' | 'quiet' | 'denied' | 'busy';
 /**
  * "Is the mic working?" before any practice that needs it: a live bar, a green tick the
  * moment real sound comes in (auto-continues), and plain Thai help + a mic picker if not.
- * Zoom-style — the one screen that turns "กดแล้วไม่มีเสียง" into something Jam can fix herself.
+ * Zoom-style — the one screen that turns "กดแล้วไม่มีเสียง" into something the learner can fix alone.
  */
 export function MicCheck({ onPass, onSkip, autoContinue = true }: { onPass: () => void; onSkip?: () => void; autoContinue?: boolean }) {
   const [status, setStatus] = useState<Status>('opening');

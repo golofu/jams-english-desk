@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Session } from '@supabase/supabase-js';
-import { supabase } from './lib/supabase';
+import { fetchMe, type Me } from './lib/auth';
 import { AppProvider, useApp } from './state';
 import { BRAND } from './brand';
 import { Home } from './screens/Home';
@@ -12,35 +11,41 @@ import { Progress } from './screens/Progress';
 import { Settings } from './screens/Settings';
 import { Login } from './screens/Login';
 import { Onboarding } from './screens/Onboarding';
+import { KeySetup } from './screens/KeySetup';
 
 type Tab = 'home' | 'phrases' | 'progress' | 'settings';
 type Flow = 'morning' | 'night' | 'prep' | null;
 
 export function App() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [ready, setReady] = useState(!supabase);
+  const [me, setMe] = useState<Me | null | undefined>(undefined); // undefined = still asking
+  const [offline, setOffline] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setReady(true);
-    });
-    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
-    return () => data.subscription.unsubscribe();
-  }, []);
+    setOffline(false);
+    fetchMe()
+      .then(setMe)
+      .catch(() => setOffline(true));
+  }, [attempt]);
 
-  if (!ready) return <div className="splash">กำลังโหลด…</div>;
-  if (supabase && !session) return <Login />;
+  if (offline)
+    return (
+      <div className="splash center-col">
+        <p>เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ต่ออินเทอร์เน็ตแล้วกดลองใหม่นะคะ</p>
+        <button className="btn primary" onClick={() => setAttempt((n) => n + 1)}>ลองใหม่</button>
+      </div>
+    );
+  if (me === undefined) return <div className="splash">กำลังโหลด…</div>;
+  if (!me) return <Login />;
   return (
-    <AppProvider session={session}>
+    <AppProvider me={me} onMeChange={setMe}>
       <Shell />
     </AppProvider>
   );
 }
 
 function Shell() {
-  const { data } = useApp();
+  const { data, me, keySkipped, skipKey } = useApp();
   const [tab, setTab] = useState<Tab>('home');
   const [flow, setFlow] = useState<Flow>(null);
   // 0 = the day's Morning Talk; each extra lesson bumps it, so a fresh Morning picks the next scene.
@@ -71,6 +76,8 @@ function Shell() {
   }, [flow]);
 
   if (!data.profile.onboarded) return <Onboarding />;
+  // Each account brings its own free Gemini key; without one the AI screens can't work.
+  if (!me.hasKey && !keySkipped) return <KeySetup onDone={() => skipKey(true)} onSkip={() => skipKey(false)} />;
 
   const exit = () => {
     setFlow(null);
@@ -88,8 +95,8 @@ function Shell() {
   return (
     <div className="shell">
       <header className="topbar">
-        <img src={BRAND.logo} alt={BRAND.company} className="logo" />
-        <span className="app-name">English Desk</span>
+        <img src={BRAND.logo} alt={BRAND.appName} className="logo" />
+        <span className="app-name">{BRAND.appName}</span>
       </header>
       <main>
         {tab === 'home' && <Home go={go} />}

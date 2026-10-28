@@ -3,10 +3,11 @@ import { CHARACTERS } from '../data/characters';
 import { Avatar } from '../components/Avatar';
 import { MicCheck } from '../components/MicCheck';
 import { SPEECH_RATE, speak } from '../lib/audio';
-import { supabase } from '../lib/supabase';
+import { removeGeminiKey } from '../lib/api';
 import type { AvatarStyle, Profile } from '../lib/store';
 import { useApp } from '../state';
 import { BRAND } from '../brand';
+import { KeySetup } from './KeySetup';
 
 const STYLES: { id: AvatarStyle; th: string }[] = [
   { id: 'pixar', th: 'การ์ตูน Pixar' },
@@ -15,14 +16,71 @@ const STYLES: { id: AvatarStyle; th: string }[] = [
 ];
 
 export function Settings() {
-  const { data, update, email, signOut } = useApp();
+  const { data, update, me, email, signOut, refreshMe } = useApp();
   const p = data.profile;
   const set = (patch: Partial<Profile>) => update('profile', (x) => ({ ...x, ...patch }));
   const [micTest, setMicTest] = useState(false);
+  const [keyEdit, setKeyEdit] = useState(false);
+
+  if (keyEdit)
+    return (
+      <div className="screen">
+        <KeySetup
+          onDone={() => {
+            setKeyEdit(false);
+            void refreshMe();
+          }}
+          onSkip={() => setKeyEdit(false)}
+        />
+      </div>
+    );
 
   return (
     <div className="screen">
       <h2>ตั้งค่า</h2>
+
+      <div className="card">
+        <div className="card-title">เกี่ยวกับคุณ</div>
+        <p className="small">โค้ชใช้ข้อมูลนี้เรียกชื่อและตั้งฉากฝึกให้ตรงกับงานของคุณ</p>
+        <label className="field">
+          ชื่อเล่น (ภาษาอังกฤษ ให้โค้ชเรียก)
+          <input value={p.name} onChange={(e) => set({ name: e.target.value })} placeholder="เช่น Golf" />
+        </label>
+        <label className="field">
+          ตำแหน่งงาน
+          <input value={p.job} onChange={(e) => set({ job: e.target.value })} placeholder="เช่น เลขา CEO, HR, ฝ่ายขาย" />
+        </label>
+        <label className="field">
+          บริษัท (ใส่หรือไม่ก็ได้)
+          <input value={p.company} onChange={(e) => set({ company: e.target.value })} placeholder="ชื่อบริษัท" />
+        </label>
+      </div>
+
+      <div className="card">
+        <div className="card-title">กุญแจ AI (Gemini)</div>
+        {me.sponsored ? (
+          <p className="small">บัญชีนี้ใช้กุญแจของแอป ไม่ต้องตั้งค่าอะไรเพิ่มค่ะ</p>
+        ) : (
+          <>
+            <p className="small">{me.hasKey ? '✅ มีกุญแจแล้ว ใช้ AI ได้ตามปกติ' : '⚠️ ยังไม่มีกุญแจ หน้าฝึกที่ใช้ AI จะยังใช้ไม่ได้'}</p>
+            <div className="row">
+              <button className="btn" onClick={() => setKeyEdit(true)}>{me.hasKey ? 'เปลี่ยนกุญแจ' : 'ใส่กุญแจ'}</button>
+              {me.hasKey && (
+                <button
+                  className="btn ghost"
+                  onClick={async () => {
+                    if (!window.confirm('ลบกุญแจออกจากแอป? จะใช้ AI ไม่ได้จนกว่าจะใส่ใหม่')) return;
+                    await removeGeminiKey();
+                    void refreshMe();
+                  }}
+                >
+                  ลบกุญแจ
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
 
       <div className="card">
         <div className="card-title">ไมโครโฟน</div>
@@ -79,10 +137,10 @@ export function Settings() {
 
       <div className="card">
         <div className="card-title">บัญชีและข้อมูล</div>
-        <p className="small">{supabase ? `เข้าสู่ระบบด้วย ${email}` : 'โหมด Local: ข้อมูลเก็บไว้ในเครื่องนี้เท่านั้น'}</p>
-        <p className="small">🔒 ความคืบหน้าทั้งหมดแจมเห็นคนเดียว ไม่มีใครดูได้</p>
+        <p className="small">เข้าสู่ระบบด้วย {email}</p>
+        <p className="small">🔒 ความคืบหน้าทั้งหมดคุณเห็นคนเดียว ไม่มีใครดูได้</p>
         <p className="small">⚠️ ใช้ AI ฟรีของ Google ซึ่งอาจนำบทสนทนาไปใช้พัฒนา อย่าพูดหรือพิมพ์ข้อมูลจริงหรือข้อมูลลับของลูกค้าหรือบริษัท</p>
-        {supabase && <button className="btn" onClick={signOut}>ออกจากระบบ</button>}
+        <button className="btn" onClick={signOut}>ออกจากระบบ</button>
       </div>
       <p className="small center">{BRAND.appName} · {BRAND.company}</p>
     </div>

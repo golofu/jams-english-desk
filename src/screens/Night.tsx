@@ -3,7 +3,7 @@ import { CHARACTERS } from '../data/characters';
 import { SCENARIOS } from '../data/curriculum';
 import { Avatar } from '../components/Avatar';
 import { SPEECH_RATE, speak, stopSpeaking } from '../lib/audio';
-import { addDays, byDue, dayStr, phraseKey, reviewPhrase, uid, type SavedPhrase } from '../lib/store';
+import { addDays, byDue, dayStr, learnerName, phraseKey, reviewPhrase, uid, type SavedPhrase } from '../lib/store';
 import { useApp } from '../state';
 
 type Item = { id?: string; en: string; th: string };
@@ -31,6 +31,7 @@ const QUIZ_N = 6;
 /** Night Review: quiet listening + tap quiz. No speaking (others may be asleep). */
 export function Night({ onExit }: { onExit: () => void }) {
   const { data, update } = useApp();
+  const name = learnerName(data.profile);
   const prof = data.profile;
   const [step, setStep] = useState<'start' | 'listen' | 'quiz' | 'done'>('start');
   const [i, setI] = useState(0);
@@ -179,7 +180,7 @@ export function Night({ onExit }: { onExit: () => void }) {
     <div className="screen night-screen center-col">
       <Avatar character={jimmy} style={prof.style} size={160} />
       <h2>ได้ {score} / {quiz.length} ข้อ</h2>
-      <p>{score >= quiz.length - 1 ? 'เยี่ยมมาก! ' : 'ไม่เป็นไร ประโยคที่ผิดจะกลับมาให้ทบทวนอีก '}Good night, Jam. See you at 5 a.m. 🌙</p>
+      <p>{score >= quiz.length - 1 ? 'เยี่ยมมาก! ' : 'ไม่เป็นไร ประโยคที่ผิดจะกลับมาให้ทบทวนอีก '}Good night, {name}. See you tomorrow. 🌙</p>
       <button className="btn primary big" onClick={onExit}>ราตรีสวัสดิ์</button>
     </div>
   );

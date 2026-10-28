@@ -1,10 +1,10 @@
 import { ThinkingLevel } from '@google/genai';
-import { LITE_MODEL, TEXT_MODEL, HttpError, gemini, handle, json, requireUser, statusOf } from './_shared/common.js';
-import { GROQ_MODELS, groqJson, groqQuota, hasGroq, transcribe } from './_shared/groq.js';
+import { LITE_MODEL, TEXT_MODEL, HttpError, gemini, handle, json, learnerOf, statusOf, type Caller, type Learner } from './common.js';
+import { GROQ_MODELS, groqJson, groqQuota, hasGroq, transcribe } from './groq.js';
 
 /**
  * Text-model helpers. One endpoint, `action` picks the job:
- *  help      – Jam is stuck: Thai (speech or text) -> one simple English line to say
+ *  help      – the learner is stuck: Thai (speech or text) -> one simple English line to say
  *  translate – English subtitle lines -> Thai
  *  evaluate  – role-play transcript -> stars + review cards
  *  prep      – "ซ้อมก่อนเจอจริง": Thai description of tomorrow -> custom scenario
@@ -15,7 +15,11 @@ import { GROQ_MODELS, groqJson, groqQuota, hasGroq, transcribe } from './_shared
 type Audio = { data: string; mimeType: string };
 type Line = { who: 'jam' | 'ai'; text: string };
 
-const LEARNER = `The learner is Jam, a Thai executive secretary to the CEO of GoDigit. Her English is beginner level (about A1-A2) and she lacks confidence. Use short, simple, polite professional business English she can use at work (meetings, guests, clients, phone, email). Thai must be natural everyday Thai.`;
+// Learner frame: name/job/company come from the client profile; everything else is fixed here.
+function learnerLine(l: Learner) {
+  const work = [l.job && `works as ${l.job}`, l.company && `at ${l.company}`].filter(Boolean).join(' ');
+  return `The learner is ${l.name}, a Thai office worker${work ? ` who ${work}` : ''}. Their English is beginner level (about A1-A2) and they lack confidence. Refer to the learner by name or as "you"; never assume their gender. Use short, simple, polite professional business English they can use at work (meetings, guests, clients, phone, email). Thai must be natural everyday Thai.`;
+}
 
 const PRIVACY = `Never ask for or repeat real names of real clients, phone numbers or confidential business details; use generic placeholders.`;
 
@@ -48,16 +52,16 @@ type Plan = {
   gemini?: string | string[];
   /** Try Groq before Gemini: frequent / latency-sensitive jobs, where Gemini's ~20/day runs out. */
   groqFirst?: boolean;
-  /** Language of Jam's attached speech, for Whisper when Groq handles it. */
+  /** Language of the learner's attached speech, for Whisper when Groq handles it. */
   lang?: 'th' | 'en';
 };
 type Candidate = { provider: 'gemini' | 'groq'; model: string };
 const exhaustedUntil = new Map<string, number>();
 
-async function generate(prompt: string, schema: object, audio?: Audio, plan: Plan = {}) {
-  const fullPrompt = `${prompt}\n(Jam's name in Thai is "แจม".)`;
-  const g = plan.gemini ?? TEXT_MODEL;
-  const geminiList: Candidate[] = (Array.isArray(g) ? g : [g, ...FALLBACKS.filter((m) => m !== g)]).map((model) => ({ provider: 'gemini', model }));
+async function generate(g: Ctx, prompt: string, schema: object, audio?: Audio, plan: Plan = {}) {
+  const fullPrompt = `${prompt}\n(The learner's name is "${g.learner.name}"; address them by that name.)`;
+  const gm = plan.gemini ?? TEXT_MODEL;
+  const geminiList: Candidate[] = (Array.isArray(gm) ? gm : [gm, ...FALLBACKS.filter((m) => m !== gm)]).map((model) => ({ provider: 'gemini', model }));
   const groqList: Candidate[] = hasGroq() ? GROQ_MODELS.map((model) => ({ provider: 'groq', model })) : [];
   // Gemini-first jobs still reach Groq quickly: two Gemini tries, then Groq, then the rest.
   // Models that said "daily quota used up" are skipped for an hour (per warm instance).
@@ -86,7 +90,7 @@ async function generate(prompt: string, schema: object, audio?: Audio, plan: Pla
       if (provider === 'groq') {
         let p = fullPrompt;
         if (audio) {
-          // Groq's text models can't hear: Whisper writes down what Jam said first (once per request).
+          // Groq's text models can't hear: Whisper writes down what the learner said first (once per request).
           transcript ??= await transcribe(audio.data, plan.lang ?? 'en', ctl.signal);
           p += `\n[The attached audio, as ${plan.lang === 'th' ? 'Thai' : 'English'} speech-to-text (may contain recognition errors): "${transcript}"]`;
         }
@@ -94,7 +98,7 @@ async function generate(prompt: string, schema: object, audio?: Audio, plan: Pla
       }
       const parts: { text?: string; inlineData?: Audio }[] = [{ text: fullPrompt }];
       if (audio) parts.push({ inlineData: audio });
-      const res = await gemini().models.generateContent({
+      const res = await gemini(g.caller).models.generateContent({
         model: m,
         contents: [{ role: 'user', parts }],
         config: {
@@ -153,7 +157,8 @@ const str = { type: 'string' };
 const phrase = { type: 'object', properties: { en: str, th: str }, required: ['en', 'th'] };
 
 type Body = Record<string, any>;
-const actions: Record<string, (b: Body, audio?: Audio) => Promise<unknown>> = {
+type Ctx = { caller: Caller; learner: Learner };
+const actions: Record<string, (g: Ctx, b: Body, audio?: Audio) => Promise<unknown>> = {
   async usage() {
     if (!hasGroq()) return { text: null };
     const list = await groqQuota(AbortSignal.timeout(10_000));
@@ -164,12 +169,13 @@ const actions: Record<string, (b: Body, audio?: Audio) => Promise<unknown>> = {
         : null,
     };
   },
-  async help(b, audio) {
+  async help(g, b, audio) {
     return generate(
-      `${LEARNER}
-Jam is in the middle of an English role-play and got stuck. She expressed what she wants to say in Thai (${audio ? 'see the attached audio' : `text: "${cap(b.text, 400)}"`}).
+      g,
+      `${learnerLine(g.learner)}
+${g.learner.name} is in the middle of an English role-play and got stuck. They expressed what they want to say in Thai (${audio ? 'see the attached audio' : `text: "${cap(b.text, 400)}"`}).
 Conversation context: ${cap(b.context, 1500) || 'general workplace conversation'}.
-Give ONE short, polite business English sentence (max 14 words) she can say right now, its Thai meaning, sayIt = how to pronounce the ENGLISH sentence, written in Thai letters (e.g. "Would you like coffee?" → "วูด ยู ไลค์ คอฟฟี่"), and heard = what you understood she said (Thai).`,
+Give ONE short, polite business English sentence (max 14 words) they can say right now, its Thai meaning, sayIt = how to pronounce the ENGLISH sentence, written in Thai letters (e.g. "Would you like coffee?" → "วูด ยู ไลค์ คอฟฟี่"), and heard = what you understood they said (Thai).`,
       {
         type: 'object',
         properties: { en: str, th: str, sayIt: str, heard: str },
@@ -180,10 +186,11 @@ Give ONE short, polite business English sentence (max 14 words) she can say righ
     );
   },
 
-  async translate(b) {
+  async translate(g, b) {
     const items = (Array.isArray(b.lines) ? b.lines : []).slice(0, 20).map((l: unknown) => cap(l, 600));
     if (!items.length) return { th: [] };
     return generate(
+      g,
       `Translate each English line into natural, easy Thai for a beginner learner. Keep the same order and count. Pick one natural form — never write alternatives with a slash (ครับ/ค่ะ, ผม/ฉัน).\n${JSON.stringify(items)}`,
       { type: 'object', properties: { th: { type: 'array', items: str } }, required: ['th'] },
       undefined,
@@ -191,15 +198,17 @@ Give ONE short, polite business English sentence (max 14 words) she can say righ
     );
   },
 
-  async evaluate(b) {
-    const transcript = lineList(b.transcript, 80).map((l) => `${l.who === 'jam' ? 'JAM' : 'PARTNER'}: ${l.text}`).join('\n');
+  async evaluate(g, b) {
+    const name = g.learner.name.toUpperCase();
+    const transcript = lineList(b.transcript, 80).map((l) => `${l.who === 'jam' ? name : 'PARTNER'}: ${l.text}`).join('\n');
     const sc = b.scenario ?? {};
     const scenario = { title: cap(sc.titleEn, 200), goal: cap(sc.goalEn, 500), tasks: (Array.isArray(sc.tasks) ? sc.tasks : []).slice(0, 6).map((t: unknown) => cap(t, 200)) };
     return generate(
-      `${LEARNER}
-You are ${cap(b.coachName, 40) || 'Jimmy'}, Jam's warm 50-year-old coach. Review this role-play kindly in your WORDS (beginners quit when they feel judged), but score HONESTLY — the stars decide when she moves up a level.
+      g,
+      `${learnerLine(g.learner)}
+You are ${cap(b.coachName, 40) || 'Jimmy'}, ${g.learner.name}'s warm 50-year-old coach. Review this role-play kindly in your WORDS (beginners quit when they feel judged), but score HONESTLY — the stars decide when they move up a level.
 Scenario: ${JSON.stringify(scenario)}
-She spoke ${Number(b.jamTurns) || 0} times and pressed the "I'm stuck" (Thai help) button ${Number(b.helpCount) || 0} times.
+${g.learner.name} spoke ${Number(b.jamTurns) || 0} times and pressed the "I'm stuck" (Thai help) button ${Number(b.helpCount) || 0} times.
 Transcript (speech-to-text, may contain recognition errors — be lenient about spelling):
 ${transcript || '(empty)'}
 
@@ -207,12 +216,12 @@ Give 1-3 stars for each, using these anchors:
 - task: 3 = all tasks clearly done; 2 = at least half the tasks done; 1 = fewer.
 - listening: 3 = answered every question on topic; 2 = mostly on topic, needed a repeat or two; 1 = often off topic or no answer.
 - fluency: 3 = full sentences, ≤1 help press; 2 = short sentences or 2-3 help presses; 1 = mostly single words or 4+ help presses.
-If she spoke fewer than 2 times, give 1 star each, and make noteTh/noteEn gently encourage her to answer more next time (do not praise the result).
-good: up to 3 things she said well (quote her words, Thai praise).
-better: up to 3 of her sentences rewritten as natural, polite business English (said = her words, better = improved, th = Thai meaning, why = short Thai reason).
+If they spoke fewer than 2 times, give 1 star each, and make noteTh/noteEn gently encourage them to answer more next time (do not praise the result).
+good: up to 3 things they said well (quote their words, Thai praise).
+better: up to 3 of their sentences rewritten as natural, polite business English (said = their words, better = improved, th = Thai meaning, why = short Thai reason).
 words: 5 useful business words/phrases from this scenario with Thai meaning.
 noteTh: 1-2 warm sentences from you (the coach, a man: end with ครับ, never ค่ะ) in Thai. noteEn: one short simple English sentence from you.
-memory: one English sentence summarizing what she practiced and what to work on next (you will read this tomorrow).`,
+memory: one English sentence summarizing what they practiced and what to work on next (you will read this tomorrow).`,
       {
         type: 'object',
         properties: {
@@ -240,16 +249,17 @@ memory: one English sentence summarizing what she practiced and what to work on 
     );
   },
 
-  async prep(b, audio) {
+  async prep(g, b, audio) {
     const r = (await generate(
-      `${LEARNER}
-Jam described (in Thai) a real situation she will face soon at work: ${audio ? 'see the attached audio' : `"${cap(b.text, 800)}"`}.
+      g,
+      `${learnerLine(g.learner)}
+${g.learner.name} described (in Thai) a real situation they will face soon at work: ${audio ? 'see the attached audio' : `"${cap(b.text, 800)}"`}.
 ${PRIVACY}
 Design a short practice role-play for it. If the description is not a workplace situation, design a polite small-talk scene instead.
-character: pick the best partner id (never "jam" — Jam is the learner, not the partner): "sarah" (a visitor/guest, friendly), "tanaka" (Japanese client, polite), "ben" (hotel/airline/restaurant staff).
+character: pick the best partner id (the learner is never the partner): "sarah" (a visitor/guest, friendly), "tanaka" (Japanese client, polite), "ben" (hotel/airline/restaurant staff).
 partnerRole: who the partner is in this scene (English, one line). opening: the partner's first line (simple English).
-keyPhrases: exactly 5 sentences Jam will need, simple English + Thai.
-tasks: 2-4 short English checklist items for Jam to accomplish.`,
+keyPhrases: exactly 5 sentences the learner will need, simple English + Thai.
+tasks: 2-4 short English checklist items for the learner to accomplish.`,
       {
         type: 'object',
         properties: {
@@ -275,11 +285,13 @@ tasks: 2-4 short English checklist items for Jam to accomplish.`,
     return r;
   },
 
-  async turn(b, audio) {
-    const history = lineList(b.history, 16).map((l) => `${l.who === 'jam' ? 'JAM' : 'YOU'}: ${l.text}`).join('\n');
+  async turn(g, b, audio) {
+    const name = g.learner.name.toUpperCase();
+    const history = lineList(b.history, 16).map((l) => `${l.who === 'jam' ? name : 'YOU'}: ${l.text}`).join('\n');
     // The client describes the scene, but the server owns the frame around it.
     return generate(
-      `You are a spoken role-play partner in an English-practice app for a beginner learner (Jam).
+      g,
+      `You are a spoken role-play partner in an English-practice app for a beginner learner (${g.learner.name}).
 Only ever take part in the workplace / small-talk scene below. If asked for anything else (essays, code, poems, facts, translations of documents, etc.), stay in character and gently steer back to the scene.
 --- Scene (from the app) ---
 ${cap(b.system, 4000)}
@@ -288,7 +300,7 @@ ${cap(b.system, 4000)}
 Conversation so far:
 ${history || '(start of conversation — you speak first)'}
 
-${audio ? "Jam's new turn is the attached audio. Transcribe it as heard, then reply." : b.text ? `Jam says: "${cap(b.text, 400)}"` : 'Start the conversation.'}
+${audio ? `${g.learner.name}'s new turn is the attached audio. Transcribe it as heard, then reply.` : b.text ? `${g.learner.name} says: "${cap(b.text, 400)}"` : 'Start the conversation.'}
 Reply in character with 1-2 short spoken sentences.`,
       { type: 'object', properties: { heard: str, reply: str }, required: ['heard', 'reply'] },
       audio,
@@ -297,9 +309,8 @@ Reply in character with 1-2 short spoken sentences.`,
   },
 };
 
-export default handle(async (req) => {
-  await requireUser(req);
-  const body = await req.json().catch(() => null);
+export default handle(async (req, caller) => {
+  const body = (await req.json().catch(() => null)) as Body | null;
   if (!body || typeof body.action !== 'string' || !Object.hasOwn(actions, body.action)) return json({ error: 'BAD_ACTION' }, 400);
   let audio: Audio | undefined;
   if (body.audio) {
@@ -308,5 +319,5 @@ export default handle(async (req) => {
     if (data.length > 2_800_000) return json({ error: 'AUDIO_TOO_LARGE' }, 413); // ≈ 60 s of 16 kHz WAV
     audio = { data, mimeType };
   }
-  return json(await actions[body.action](body, audio));
+  return json(await actions[body.action]({ caller, learner: learnerOf(body) }, body, audio));
 });

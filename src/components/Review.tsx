@@ -111,7 +111,7 @@ export function Review({ scenario, call, kind, character, onNext, nextLabel }: {
       <div className="review-head">
         <Avatar character={jimmy} style={prof.style} state={ev ? 'idle' : 'thinking'} size={120} />
         <div className="bubble">
-          {!ev && !error && <>{prof.coachName} กำลังดูผลการคุยของแจม…</>}
+          {!ev && !error && <>{prof.coachName} กำลังดูผลการคุยของคุณ…</>}
           {error && (
             <>
               <div>{error}</div>
@@ -137,7 +137,7 @@ export function Review({ scenario, call, kind, character, onNext, nextLabel }: {
         <>
           <div className="card stars-card">
             {call.lines.filter((l) => l.who === 'jam').length < 2 && (
-              <div className="small">รอบนี้แจมพูดแค่ครั้งเดียว ลองโต้ตอบอย่างน้อย 2–3 ครั้ง จะได้ดาวตามจริงนะคะ</div>
+              <div className="small">รอบนี้คุณพูดแค่ครั้งเดียว ลองโต้ตอบอย่างน้อย 2–3 ครั้ง จะได้ดาวตามจริงนะคะ</div>
             )}
             {rows.map((r) => (
               <div key={r.key} className="star-row">
@@ -149,7 +149,7 @@ export function Review({ scenario, call, kind, character, onNext, nextLabel }: {
 
           {ev.good.length > 0 && (
             <div className="card">
-              <div className="card-title">👍 แจมพูดได้ดี</div>
+              <div className="card-title">👍 คุณพูดได้ดี</div>
               {ev.good.map((g, i) => (
                 <div key={i} className="good-row">
                   <div className="en">“{g.en}”</div>
@@ -164,7 +164,7 @@ export function Review({ scenario, call, kind, character, onNext, nextLabel }: {
               <div className="card-title">✨ พูดแบบนี้จะเป็นธรรมชาติขึ้น</div>
               {ev.better.map((b, i) => (
                 <div key={i} className="better-row">
-                  <div className="said">แจมพูด: {b.said}</div>
+                  <div className="said">คุณพูด: {b.said}</div>
                   <button className="phrase-row" onClick={() => speak(b.better, { rate: 0.85 })}>
                     <span className="en">🔊 {b.better}</span>
                     <span className="th">{b.th} · <i>{b.why}</i></span>
@@ -199,7 +199,7 @@ export function Review({ scenario, call, kind, character, onNext, nextLabel }: {
           🔄 ให้ {prof.coachName} ดูผลอีกครั้ง
         </button>
       )}
-      {/* Never block the way forward: the session is already logged, and a stalled review must not trap Jam. */}
+      {/* Never block the way forward: the session is already logged, and a stalled review must not trap the learner. */}
       <button className="btn primary big" onClick={onNext}>
         {nextLabel}
       </button>

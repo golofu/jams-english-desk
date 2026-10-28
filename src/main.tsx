@@ -5,7 +5,7 @@ import { Gallery } from './Gallery';
 import { BRAND } from './brand';
 import './styles.css';
 
-// Brand tokens → CSS variables, so swapping GoDigit colors is one file.
+// Brand tokens → CSS variables, so swapping the brand colors is one file.
 const root = document.documentElement.style;
 root.setProperty('--brand', BRAND.colors.primary);
 root.setProperty('--brand-ink', BRAND.colors.primaryInk);
@@ -37,7 +37,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
     })
     .catch(() => undefined);
 }
-// Ask the browser not to evict Jam's progress and voice recordings when storage runs low.
+// Ask the browser not to evict the learner's progress and voice recordings when storage runs low.
 navigator.storage?.persist?.().catch(() => undefined);
 
 createRoot(document.getElementById('root')!).render(

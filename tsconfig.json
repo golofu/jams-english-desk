@@ -18,13 +18,13 @@
     "noEmit": true,
     "types": [
       "vite/client",
-      "node"
+      "node",
+      "@cloudflare/workers-types"
     ]
   },
   "include": [
     "src",
-    "netlify",
-    "api",
+    "worker",
     "dev",
     "vite.config.ts"
   ]

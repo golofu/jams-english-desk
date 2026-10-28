@@ -1,11 +1,14 @@
-import { supabase } from './supabase';
-
 export type Speed = 'slow' | 'normal' | 'fast';
 export type Subtitles = 'both' | 'en' | 'off';
 export type AvatarStyle = 'pixar' | 'anime' | 'real';
 export type Stars = { task: number; listening: number; fluency: number };
 
 export type Profile = {
+  /** How the coach addresses the learner (English letters work best for speech). */
+  name: string;
+  /** Job and workplace, in the learner's own words; the coach builds scenes around them. */
+  job: string;
+  company: string;
   coachName: string;
   subtitles: Subtitles;
   speed: Speed;
@@ -14,7 +17,7 @@ export type Profile = {
   nightTime: string;
   onboarded: boolean;
   level: number;
-  memory: string; // Jimmy's note from the last session
+  memory: string; // the coach's note from the last session
   memoryDate?: string; // day the memory was written, so Jimmy doesn't call last week "yesterday"
   updatedAt?: number; // newest edit wins for settings when two devices disagree
 };
@@ -55,6 +58,9 @@ export type AppData = {
 
 export const DEFAULT_DATA: AppData = {
   profile: {
+    name: '',
+    job: '',
+    company: '',
     coachName: 'Jimmy',
     subtitles: 'both',
     speed: 'slow',
@@ -75,7 +81,7 @@ const KEYS: DataKey[] = ['profile', 'sessions', 'phrases', 'snapshots'];
 const ARRAYS: DataKey[] = ['sessions', 'phrases', 'snapshots'];
 
 // Local copies are scoped per account so a second Google account never sees (or
-// uploads) Jam's data. 'local' = no Supabase. A dirty flag marks changes not yet synced.
+// uploads) another learner's data. A dirty flag marks changes not yet synced.
 const LS = (scope: string, k: string) => `jed:${scope}:${k}`;
 const DIRTY = (scope: string, k: string) => `jed:${scope}:${k}:dirty`;
 const LEGACY = (k: string) => `jed:${k}`; // pre-scoping builds
@@ -115,6 +121,29 @@ function byId<T extends { id: string }>(a: T[], b: T[], pick: (x: T, y: T) => T)
 }
 const touched = (p: SavedPhrase) => p.touchedAt ?? p.addedAt;
 
+// ---------- cloud copy (Worker /api/state, one JSON document per key) ----------
+type Remote = { value: unknown; version: number };
+async function remoteGet(key: DataKey): Promise<Remote> {
+  const r = await fetch(`/api/state/${key}`, { cache: 'no-store' });
+  if (!r.ok) throw new Error(`state ${r.status}`);
+  return (await r.json()) as Remote;
+}
+async function remoteGetAll(): Promise<Record<string, Remote>> {
+  const r = await fetch('/api/state', { cache: 'no-store' });
+  if (!r.ok) throw new Error(`state ${r.status}`);
+  return (await r.json()) as Record<string, Remote>;
+}
+/** Writes only if the cloud row is still `base`; otherwise returns the newer cloud copy. */
+async function remotePut(key: DataKey, value: unknown, base: number): Promise<{ ok: true; version: number } | { ok: false; current: Remote }> {
+  const r = await fetch(`/api/state/${key}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value, base }) });
+  if (r.status === 409) {
+    const cur = (await r.json()) as Remote;
+    return { ok: false, current: cur };
+  }
+  if (!r.ok) throw new Error(`state ${r.status}`);
+  return { ok: true, version: ((await r.json()) as { version: number }).version };
+}
+
 /**
  * Two devices' copies of one key → one copy that loses nothing: lists merge item by item
  * (a review, a star or a delete on either side survives), the level never goes down, and
@@ -142,32 +171,35 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 /**
  * Loads every key: local copy merged with the cloud copy, and anything the cloud is missing
- * is pushed. `failed` = the cloud couldn't be reached (offline, paused free project).
+ * is pushed. `failed` = the cloud couldn't be reached (offline).
  */
-export async function loadData(userId: string | null): Promise<{ data: AppData; failed: boolean }> {
-  const scope = userId ?? 'local';
+export async function loadData(userId: string): Promise<{ data: AppData; failed: boolean }> {
+  const scope = userId;
   const data: AppData = structuredClone(DEFAULT_DATA);
   const rec = data as Record<DataKey, unknown>;
-  const legacy = !userId; // pre-scoping builds stored 'jed:<key>'
   const hadLocal = KEYS.some((k) => lsGet(LS(scope, k)) !== undefined);
   for (const k of KEYS) {
-    const v = sane(k, lsGet(LS(scope, k)) ?? (legacy ? lsGet(LEGACY(k)) : undefined));
+    const v = sane(k, lsGet(LS(scope, k)));
     if (v !== undefined) rec[k] = v;
   }
-  if (!supabase || !userId) return { data, failed: false };
 
-  const { data: rows, error } = await supabase.from('app_state').select('key,value').eq('user_id', userId);
-  if (error) return { data, failed: true }; // offline: local copy is the best we have
-  const remote = new Map((rows ?? []).map((r) => [r.key as DataKey, r.value]));
-  if (!remote.size && !hadLocal) {
-    // First sign-in on this device with an empty account: bring Local-mode practice along.
+  let remote: Record<string, Remote>;
+  try {
+    remote = await remoteGetAll();
+  } catch {
+    return { data, failed: true }; // offline: local copy is the best we have
+  }
+  if (!Object.keys(remote).length && !hadLocal) {
+    // First sign-in on this device with an empty account: bring earlier local-only practice along
+    // (the passcode-era build kept everything under 'local' / unscoped keys).
     for (const k of KEYS) {
       const v = sane(k, lsGet(LS('local', k)) ?? lsGet(LEGACY(k)));
       if (v !== undefined) rec[k] = v;
     }
   }
   for (const k of KEYS) {
-    const r = sane(k, remote.get(k));
+    const r = sane(k, remote[k]?.value);
+    versions.set(`${userId}:${k}`, remote[k]?.version ?? 0);
     if (r) rec[k] = mergeKey(k, rec[k] as never, r as never);
     lsSet(LS(scope, k), rec[k]);
     if (!r || !same(r, rec[k])) queueSync(userId, k, rec[k]);
@@ -178,6 +210,7 @@ export async function loadData(userId: string | null): Promise<{ data: AppData; 
 // One request in flight per key, always sending the newest value (debounced), so
 // rapid edits can't land out of order and a failed write stays dirty for retry.
 const pending = new Map<string, { userId: string; key: DataKey; value: unknown }>();
+const versions = new Map<string, number>(); // cloud version this device last merged against, per key
 const inflight = new Set<string>();
 const timers = new Map<string, number>();
 let onSyncChange: (unsynced: number) => void = () => undefined;
@@ -196,26 +229,37 @@ function queueSync(userId: string, key: DataKey, value: unknown) {
 
 async function flush(id: string) {
   const job = pending.get(id);
-  if (!job || !supabase || inflight.has(id)) return;
+  if (!job || inflight.has(id)) return;
   inflight.add(id);
   pending.delete(id);
-  // Read-merge-write: a stale tab must never replace what another device saved.
+  // Merge-then-write with a version check: a stale tab must never replace what another device saved.
   let value = job.value;
   let error: unknown = null;
-  const cur = await supabase.from('app_state').select('value').eq('user_id', job.userId).eq('key', job.key).maybeSingle();
-  if (cur.error) error = cur.error;
-  else {
-    const r = sane(job.key, cur.data?.value);
-    if (r) value = mergeKey(job.key, value as never, r as never);
-    if (!r || !same(r, value)) {
-      ({ error } = await supabase
-        .from('app_state')
-        .upsert({ user_id: job.userId, key: job.key, value, updated_at: new Date().toISOString() }));
+  try {
+    let base = versions.get(id);
+    if (base === undefined) base = (await remoteGet(job.key)).version;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const w = await remotePut(job.key, value, base);
+      if (w.ok) {
+        versions.set(id, w.version);
+        break;
+      }
+      // Another device wrote meanwhile: fold its copy in and try again against the new version.
+      const r = sane(job.key, w.current.value);
+      if (r) value = mergeKey(job.key, value as never, r as never);
+      base = w.current.version;
+      if (r && same(r, value)) {
+        versions.set(id, base);
+        break; // the cloud already has everything we know
+      }
+      if (attempt === 2) error = new Error('CONFLICT');
     }
     if (!error && !same(value, job.value)) {
       lsSet(LS(job.userId, job.key), value);
       onMerged(job.key, value);
     }
+  } catch (e) {
+    error = e;
   }
   inflight.delete(id);
   if (error) {
@@ -230,13 +274,10 @@ export function retrySync() {
   for (const id of pending.keys()) void flush(id);
 }
 
-export function saveKey<K extends DataKey>(userId: string | null, key: K, value: AppData[K]) {
-  const scope = userId ?? 'local';
-  lsSet(LS(scope, key), value);
-  if (supabase && userId) {
-    lsSet(DIRTY(scope, key), Date.now());
-    queueSync(userId, key, value);
-  }
+export function saveKey<K extends DataKey>(userId: string, key: K, value: AppData[K]) {
+  lsSet(LS(userId, key), value);
+  lsSet(DIRTY(userId, key), Date.now());
+  queueSync(userId, key, value);
 }
 
 // ---------- date helpers ----------
@@ -276,7 +317,7 @@ export type LevelStatus = { days: number; scenarios: number; needScenarios: numb
 
 /**
  * Level-up needs both: passes (≥2★ in every area) on 3 different days, AND passes in
- * ~70% of the level's scenarios — so Jam can't skip half the level in three mornings.
+ * ~70% of the level's scenarios — so the learner can't skip half the level in three mornings.
  */
 export function levelStatus(sessions: SessionLog[], level: number, totalScenarios: number): LevelStatus {
   const passes = sessions.filter((s) => s.kind === 'morning' && s.level === level && passedStars(s.stars));
@@ -327,3 +368,6 @@ export function addPhrases(existing: SavedPhrase[], items: { en: string; th: str
   const keep = fresh.length ? existing.filter((p) => !(p.deleted && revived.has(phraseKey(p.en)) && fresh.some((f) => phraseKey(f.en) === phraseKey(p.en)))) : existing;
   return [...fresh, ...keep];
 }
+
+/** The learner's name for screens and greetings ("คุณ" until onboarding has asked). */
+export const learnerName = (p: Profile) => p.name.trim() || 'คุณ';
