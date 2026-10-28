@@ -36,7 +36,7 @@ export function Login() {
       )}
       <p className="small">ฟรี ใช้ AI ฟรีของ Google ด้วยกุญแจของคุณเอง (มีขั้นตอนสอนหลังเข้าสู่ระบบ)</p>
       {err && <div className="alert">{err}</div>}
-      <p className="small center"><a className="link" href="/help.html" target="_blank" rel="noreferrer">📖 วิธีใช้</a></p>
+      <p className="small center"><a className="link" href="/help" target="_blank" rel="noreferrer">📖 วิธีใช้</a></p>
     </div>
   );
 }
