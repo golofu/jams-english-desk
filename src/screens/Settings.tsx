@@ -140,6 +140,7 @@ export function Settings() {
         <p className="small">เข้าสู่ระบบด้วย {email}</p>
         <p className="small">🔒 ความคืบหน้าทั้งหมดคุณเห็นคนเดียว ไม่มีใครดูได้</p>
         <p className="small">⚠️ ใช้ AI ฟรีของ Google ซึ่งอาจนำบทสนทนาไปใช้พัฒนา อย่าพูดหรือพิมพ์ข้อมูลจริงหรือข้อมูลลับของลูกค้าหรือบริษัท</p>
+        <p className="small"><a className="link" href="/help.html" target="_blank" rel="noreferrer">📖 วิธีใช้</a></p>
         <button className="btn" onClick={signOut}>ออกจากระบบ</button>
       </div>
       <p className="small center">{BRAND.appName} · {BRAND.company}</p>

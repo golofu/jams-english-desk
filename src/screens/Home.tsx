@@ -117,6 +117,7 @@ export function Home({ go }: { go: Go }) {
         <div className="tc-go">›</div>
       </button>
       <UsageCard />
+      <p className="small center"><a className="link" href="/help.html" target="_blank" rel="noreferrer">📖 วิธีใช้</a></p>
       <p className="privacy-note">⚠️ AI ฟรีอาจนำบทสนทนาไปใช้พัฒนา อย่าพูดหรือพิมพ์ข้อมูลจริงหรือข้อมูลลับของลูกค้าและบริษัท</p>
     </div>
   );
